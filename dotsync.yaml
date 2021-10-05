@@ -1,0 +1,9 @@
+git:
+  https: "String"
+  ssh: "String"
+  credentials: "String, optional. Default will look into ~/.ssh"
+  branch: "Optional, default will look into master or main"
+files:
+  - "Full path to file"
+  - "~/.tmux.conf"
+  - "~/.vimrc.conf"

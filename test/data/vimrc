@@ -1,0 +1,61 @@
+scriptencoding utf-8
+set encoding=utf-8
+filetype plugin indent on
+" Vim plugins
+call plug#begin('~/.vim/plugged')
+	" File explorer
+	Plug 'preservim/nerdtree'
+	" Fuzzy finder FZF
+	Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
+	" git changes
+	Plug 'airblade/vim-gitgutter'
+    " Ale Linting
+    Plug 'dense-analysis/ale'
+    " Python autocompletion
+    Plug 'davidhalter/jedi-vim'
+call plug#end()
+
+" ALE OTPTIONS START
+let g:ale_linters={'python': ['pylint', 'flake8'], 'go': ['golint']}
+let g:ale_fixers={'python': ['autoimport', 'autopep8', 'black', 'isort', 'remove_trailing_lines', 'reorder-python-imports', 'trim_whitespace', 'yapf', 'add_blank_lines_for_python_control_statements']}
+let g:ale_completion_enabled = 1
+" ALE OPTIONS STOP
+
+" NERDTREE OPTIONS START
+
+" Show hidden files
+let NERDTreeShowHidden=1
+" Open
+nmap <F2> :NERDTreeToggle<CR>
+
+" NERDTREE OPTIONS END
+
+" ctags in vim
+set tags=/home/gustav/.tags
+
+" show whitespaces as characters
+set list
+set listchars=eol:$,tab:»·,trail:~,extends:>,precedes:<,space:·
+" show linenumbers
+set number
+set relativenumber
+" syntax highlightning
+syntax on
+" Use spaces instead of tabs
+set expandtab
+
+" Be smart when using tabs 
+set smarttab
+
+" 1 tab == 4 spaces
+set shiftwidth=4
+set tabstop=4
+
+set autoindent
+
+" Linebreak on 500 characters
+set lbr
+set tw=500
+
+set si "Smart indent
+set wrap "Wrap lines
