@@ -375,7 +375,7 @@ func SyncLocal(filesNotInSync []string) (error){
     for _, file := range filesNotInSync {
         _, fileName := filepath.Split(file)
         remoteFile := filePath.Join(RepoPath, fileName)
-        err := copyFile(remoteFile, file) {
+        err := copyFile(remoteFile, file); err != nil {
             // Log error, must likely related to file permission
         }
     }
@@ -385,9 +385,54 @@ func SyncLocal(filesNotInSync []string) (error){
 // files which are have been changed and syncs it with remote.
 // Input a slice of files which are out of sync
 // Returns an error if unable to sync remote
-func SyncRemote([]string) (error){
+func SyncRemote(filesNotInSync []string) (error){
     err := s.UpdateOrigin()
     if err != nil {
         return err
     }
+    repository, err := git.PlainOpen(RepoPath)
+    if err != nil {
+        return err
+    }
+    workTree, err := repository.WorkTree()
+    if err != nil {
+        return err
+    }
+    filesAdded := make([]string, 0)
+    for _, file : range filesNotInSync {
+        _, fileName := filepath.Split(file)
+        remoteFile := filePath.Join(RepoPath, fileName)
+        if err := copyFile(file, remoteFile); err == nil {
+            err := workTree.Add(fileName)
+            if err == nil {
+                filesAdded = append(filesAdded, fileName)
+            } else {
+                // Log error
+            }
+        } else {
+            // Log error must likely related to file permission
+        }
+    }
+    // Construct commit message
+    commitMessage := "dotsync automated message. Updated the following files: "
+    for i, fileName := range filesAdded {
+        if i < len(filesAdded) -1 {
+            commitMessage += fileName + ", "
+        } else {
+            commitMessage += fileName
+        }
+    }
+    commit, err workTree.Commit(commitMessage, &git.CommitOptions{
+        Author: &object.Signature{
+            Name: "dotsync"
+        },
+    })
+    if err != nil {
+        return err
+    }
+    // Fix Auth
+    repository.Push(&git.PushOptions{
+
+
+    })
 }
