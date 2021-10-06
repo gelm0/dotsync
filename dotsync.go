@@ -1,4 +1,4 @@
-package dotsync
+package dotsyn
 
 import (
     "os"
@@ -22,8 +22,23 @@ type SyncConfig struct {
 	Files       []string    `yaml:"files"`
 }
 
+type Repository struct {
+    r *git.Repository
+}
+
+type GitOperations interface {
+    Commit(commitMessage string) error
+    Push() error
+    CloneSSH(remoteURL string, sshKey []byte, branch string) error
+    CloneHTTPS(remoteURL string, basicAuth string, branch string) error
+    Pull() error
+}
+
 const (
     RepoPath = "/tmp/dotsync"
+    ErrNoCredentialsFile = errors.new("Missing credentials file")
+    ErrInvalidBasicAuth = errors.New("Can't extract username, password")
+    ErrNoRemoteURL = errors.new("Missing remote url")
 )
 
 func copyFile(source string, destination) (error) {
@@ -119,7 +134,7 @@ func DiffFiles(filePath1 string, filePath2 string) (bool, error) {
 
 // Returns a new config
 // Looks in users homefolder by default
-func New(path string) (*SyncConfig, error) {
+func NewSyncConfig(path string) (*SyncConfig, error) {
     var configPath
     if path == "" {
         homeDir, err := os.UserHomeDir()
@@ -127,7 +142,7 @@ func New(path string) (*SyncConfig, error) {
             return nil, err
         }
         // Default path is assumed to be ~/.dotsync/dotsync.yaml
-        configPath = homeDir + "/.dotsync/dotsync.yaml")
+        configPath = filepath.Join(homeDir, ".dotsync", "dotsync.yaml")
     }
     // This might be unecessary, but who doesn't love descriptive errors 
     _, err := os.Stat(configPath)
@@ -149,14 +164,78 @@ func New(path string) (*SyncConfig, error) {
     return &s, nil
 }
 
-//Convinence function to avoid checking what kind of url we have all the time
-func(s *SyncConfig) getURL (URL string) {
-    if s.HTTPS != nil {
-        URL = s.HTTPS
-    } else {
-        URL s.SSH
+// Creates and returns a Repository. If nothing exist
+// a clone operation will be performed
+// Returns the repository and a nil error if sucessful
+func NewRepository(s SyncConfig) (*Repository, error) {
+    var remoteURL := s.getURL()
+    authObject, err := os.ReadFile(s.Credentials)
+    if err != nil {
+        return nil, err
     }
-    return
+    branch := s.Branch
+    if _, err := os.Stat(filepath.Join(RepoPath, ".git"); os.IsNotExist(err) {
+        if s.HTTPS != nil {
+            err := CloneHTTPS(remoteUrl, string(authObject), branch)
+        } else {
+            err := CloneSSH(remoteUrl, []byte(authObject), branch)
+        }
+        if err != nil {
+            return nil, err
+        }
+    }
+    r := &Repository{}
+    repo, err := git.PlainOpen(RepoPath)
+    if err != nil {
+        return nil, err
+    }
+    r.r = repo
+    return r, nil
+}
+
+//Convinence function to avoid checking what kind of url we have all the time
+func(s *SyncConfig) getURL() (string) {
+    if s.HTTPS != nil {
+        return s.HTTPS
+    }
+    return s.SSH
+}
+
+func CloneHTTPS(remoteURL string, basicAuth string, branch string) (error) {
+    credentialsSlice := strings.SplitN(basicAuth, ":", 1)
+    if len(credentialsSlice) != 2 {
+        return ErrInvalidBasicAuth
+    }
+    username, password := credentialsSlice[0], credentialsSlice[1]
+    _, err := git.PlainClone(RepoPath, false, &git.CloneOptions{
+        URL: remoteURL,
+        RemoteName: branch,
+        Auth: &http.BasicAuth{
+            Username: username,
+            Password: password,
+        },
+    })
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func() CloneSSH(remoteURL string, sshKey []byte) (error) {
+    publicKey, err := ssh.NewPublicKeys("git", sshKey, "")
+    if err != nil {
+        return err
+    }
+    _, err = git.PlainClone(RepoPath, false, &git.CloneOptions {
+        URL: s.SSH,
+        Progress: os.Stdout,
+        RemoteName: s.Branch,
+        Auth: publicKey,
+   })
+   if err != nil {
+        return err
+   }
+   return nil
 }
 
 // Validates dotsyncs configuration and sets default values if not available
@@ -164,7 +243,7 @@ func(s *SyncConfig) getURL (URL string) {
 func(s *SyncConfig) ValidateAndSetDefaults() (error) {
     // Check that a git url has been supplied
     if s.HTTPS == nil && s.SSH == nil {
-        return errors.New("Missing git repository to sync")
+        return ErrNoRemoteURL
     }
     // Check that we don't both have ssh and https url 
     if s.HTTPS == nil && s.SSH == nil {
@@ -172,7 +251,7 @@ func(s *SyncConfig) ValidateAndSetDefaults() (error) {
     }
     // Check that we have credentials if HTTPS is supplied
     if s.HTTPS != nil && s.Credentials == nil{
-        return errors.New("Missing usename:password in credentials")
+        return errors.New("Missing path to credentials file")
     }
     // Check that either credentials points to a valid file or that
     // the default ~/.ssh/id_rsa exists
@@ -186,7 +265,7 @@ func(s *SyncConfig) ValidateAndSetDefaults() (error) {
             if err != nil {
                 return err
             }
-            defaultSSHKey := homeDir + ".ssh/id_rsa"
+            defaultSSHKey := filepath.Join(homeDir, ".ssh", "id_rsa")
             if _, err := os.Stat(defaultSSHKey); os.IsNotExist(err) {
                 return err
             }
@@ -206,8 +285,7 @@ func(s *SyncConfig) ValidateAndSetDefaults() (error) {
 
 //Retrieves the remote name specified by the SyncConfigs url
 // if a remote name cannot be found an error will be returned
-func(s *SyncConfig) GetRemoteName(r *git.Repository) (remoteName string, error) {
-    remoteURL := s.getURL()
+func (r *Repository) GetRemoteName() (remoteName string, error) { //Refactor dependencies interface
     remotes, err := r.Remotes()
     if err != nil {
         return "", err
@@ -227,7 +305,7 @@ func(s *SyncConfig) GetRemoteName(r *git.Repository) (remoteName string, error) 
 
 // Generates a random remote name of length 8 
 // Returns remotename, error. 
-func(s *SyncConfig) CreateRemote(r *git.Repository) (remoteName string, error) {
+func(s *SyncConfig) CreateRemote(r *git.Repository) (remoteName string, error) { // Refactor dependencies
     remoteName = randstr.Hex(8)
     remoteURL := s.getURL()
     r, err := r.CreateRemote(&config.RemoteConfig{
@@ -240,70 +318,27 @@ func(s *SyncConfig) CreateRemote(r *git.Repository) (remoteName string, error) {
     return
 }
 
-
-func(s *SyncConfig) extractBasicAuthCredentials() (string, string, error){
-    // Assumes that username does not contain ":" but does allow for ":" (colon) in password
-    credentials := strings.SplitN(s.Credentials, ":", 1)
-    if len(credentials != 2 {
-        return nil, nil, errors.New("Credentials not formatted correctly")
-    }
-    return credentials[0], credentials[1], nil
-
-}
-
 // Will clone repository with HTTPS url and if not available will
 // assume that SyncConfig contains SSH url and use that.
 // Returns error if unable to clone the specified repository url
-func(s *SyncConfig) Clone() (error) {
-    if s.HTTPS != nil  && err := s.cloneHTTPS(); err != nil {
-            return err
-    } else if err := s.cloneSSH(); err != nil {
-        return err
-    }
-    return nil
+
+func(s *SyncConfig) Push() (error) {
+
 }
 
-func(s *SyncConfig) cloneHTTPS() (error) {
-    username, password, err := s.extractBasicAuthCredentials()
-    if err != nil {
-        return err
-    }
-    _, err := git.PlainClone(RepoPath, false, &git.CloneOptions{
-        URL: s.HTTPS,
-        RemoteName: s.Branch,
-        Auth: &http.BasicAuth{
-            Username: username,
-            Password: password,
-        },
-    })
-    if err != nil {
-        return err
-    }
-    return nil
+func(s *SyncConfig) pushHTTPS() (error) {
+
 }
 
-func(s *SyncConfig) cloneSSH() (error) {
-    sshKey, err := os.ReadFile(s.Credentials)
-    if err != nil {
-        return errors.New("Error reading sshkey, %s", err)
-    }
-    publicKey, err := ssh.NewPublicKeys("git", []byte(sshKey), "")
-    if err != nil {
-        return errors.New("Error creating public key")
-    }
-    _, err = git.PlainClone(RepoPath, false, &git.CloneOptions {
-        URL: s.SSH,
-        Progress: os.Stdout,
-        RemoteName: s.Branch,
-        Auth: publicKey,
-   })
-   if err != nil {
-        return err
-   }
-   return nil
+func(s *SyncConfig) pushSSH() (error) {
+
+}
+func Commit(commitMessage string) {
+
 }
 
-func(s *SyncConfig) UpdateOrigin() (error) {
+
+func(r *Repository) UpdateOrigin() (error) {
     // Check that directory exists and is git initialized
     // if exists -> fetch -> pull newest origin
     // Check that the repo exists and is set to correct url
@@ -431,8 +466,14 @@ func SyncRemote(filesNotInSync []string) (error){
         return err
     }
     // Fix Auth
+    // If this function doesnt return an error we can have a separate push function so that logic is not handled here, 
+    // thus we do not need this function to be a method
     repository.Push(&git.PushOptions{
-
-
     })
+}
+
+// TODO: Refactor everything
+func forSanity() {
+    s := NewSynConfig()
+    r := NewRepository(s)
 }
