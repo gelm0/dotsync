@@ -1,17 +1,20 @@
-package dotsyn
+package dotsync
 
 import (
-    "os"
-    "io"
-    "io/ioutil"
-    "strings"
-    "path/filepath"
+	"io"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
-    diff "github.com/sergi/go-diff/diffmatchpatch"
-    "gopkg.in/yaml.v2"
-    "github.com/go-git/go-git/v5"
-    "github.com/go-git/go-git/v5/plumbing/transport/http"
-    "github.com/thankpk/randstr" // Random string package
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	diff "github.com/sergi/go-diff/diffmatchpatch"
+    "github.com/thanhpk/randstr" // Random string package
+	"gopkg.in/yaml.v2"
 )
 
 type SyncConfig struct {
@@ -23,35 +26,37 @@ type SyncConfig struct {
 }
 
 type Repository struct {
-    r *git.Repository
+    repo *git.Repository
 }
 
 type GitOperations interface {
     Commit(commitMessage string) error
-    Push() error
-    CloneSSH(remoteURL string, sshKey []byte, branch string) error
-    CloneHTTPS(remoteURL string, basicAuth string, branch string) error
-    Pull() error
+    Push(remoteName, basicAuth string, sshKey []byte) error
+    Pull(remoteName string) error
+    Add(filePaths[]string) error
 }
 
 const (
     RepoPath = "/tmp/dotsync"
     ErrNoCredentialsFile = errors.new("Missing credentials file")
     ErrInvalidBasicAuth = errors.New("Can't extract username, password")
+    ErrNoCredentialsSupplied = errors.new("No basicauth or sshkey supplied")
     ErrNoRemoteURL = errors.new("Missing remote url")
 )
 
-func copyFile(source string, destination) (error) {
+func copyFile(source string, destination string) (error) {
     input, err := ioutil.ReadFile(source)
     if err != nil {
         return err
     }
+    // Make file permissions modifiable by input
     err := ioutil.WriteFile(destination, input, 0644)
     if err != nil {
         return err
     }
 }
 
+// Start by diffing first 1024 and last 1024 bytes
 func diffChars(file1, file2 *os.File) (bool, error) {
     const bufferSize = 1024
     buffer1 := make([]byte, bufferSize)
@@ -135,7 +140,7 @@ func DiffFiles(filePath1 string, filePath2 string) (bool, error) {
 // Returns a new config
 // Looks in users homefolder by default
 func NewSyncConfig(path string) (*SyncConfig, error) {
-    var configPath
+    var configPath string
     if path == "" {
         homeDir, err := os.UserHomeDir()
         err != nil {
@@ -143,6 +148,8 @@ func NewSyncConfig(path string) (*SyncConfig, error) {
         }
         // Default path is assumed to be ~/.dotsync/dotsync.yaml
         configPath = filepath.Join(homeDir, ".dotsync", "dotsync.yaml")
+    } else {
+        configPath = path
     }
     // This might be unecessary, but who doesn't love descriptive errors 
     _, err := os.Stat(configPath)
@@ -193,6 +200,139 @@ func NewRepository(s SyncConfig) (*Repository, error) {
     return r, nil
 }
 
+func(r *Repository) Pull(remoteName string) (error) {
+    if remoteName == "" {
+        return error.New("No remotename supplied")
+    }
+    w, err := r.repo.WorkTree()
+    if err != nil {
+        return err
+    }
+    err := w.Pull(&git.PullOptions{RemoteName: remoteName})
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+// Checks if there is a difference between local and remote files that are
+// being watched
+// Returns a slice of files that are not in sync with remote
+func(r *Repository) DiffRemoteWithLocal() (filesNotInSync []string, error) {
+    err := r.repo.Pull()
+    if err != nil {
+        return err
+    }
+    for _, file := range s.Files {
+        _, fileName := filepath.Split(file)
+        remoteFile := filepath.Join(repoPath, fileName)
+        difference, err := DiffFiles(file, remoteFile)
+        if err != nil {
+            // We ignore this and just log the error
+            // TODO:
+            // On second hand an error here could mean that
+            // the file cannot be found on of the locations
+            // which means that it should be synced
+        }
+        if difference {
+            filesNotInSync = append(filesNotInSync, file)
+        }
+    }
+    return
+}
+
+// Pushes current commited files to remote. Assumes HTTPs or SSH depending on auth method
+// that is supplied to the function
+func(r *Repository) Push(remoteName, basicAuth: string, sshKey: []byte) error {
+    if basicAuth != nil {
+        username, password, err := splitBasicAuth(basicAuth)
+        if err != nil {
+            return err
+        }
+        err := r.repo.Push(&git.PushOptions{
+            RemoteName: remoteName,
+            Auth: &http.BasicAuth{
+                Username: username,
+                Password: password,
+            },
+        })
+        if err != nil {
+            return err
+        }
+        return nil
+    }
+    // No basic auth found, trying sshAuth
+    if sshKey == nil {
+        return ErrNoCredentialsSupplied
+    }
+    publicKey, err := ssh.NewPublicKeys("git", sshKey, "")
+    if err != nil {
+        return err
+    }
+    err := r.Repo.Push(&git.PushOptions{
+        RemoteName: remoteName,
+        Auth: publicKey,
+    })
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func(r *Repository) Commit(commitMessage string) {
+   worktree, err := r.repo.Worktree()
+   if err != nil {
+       return err
+   }
+   // May have to check status of worktree here
+   commit, err := worktree.Commit(commitMessage, &git.CommitOptions{
+      Author: &object.Signature{
+        Name: "dotsync",
+        Time: time.Now(),
+      },
+   })
+   if err != nil {
+       return err
+   }
+   _, err := r.repo.CommitObject(commit)
+   return err
+}
+
+// Retrieves the remote name tied to the remoteUrl
+// If a remote name cannot be found an error will be returned
+func(r *Repository) GetRemoteName(remoteUrl string) (remoteName string, error) { //Refactor dependencies interface
+    remotes, err := r.repo.Remotes()
+    if err != nil {
+        return "", err
+    }
+    for _, remote := range remotes {
+        name := remote.Config.Name
+        URLs := remote.Config().URLs
+        for _, URL := range URLs {
+            if URL == remoteURL {
+                // Return the first remote that matches
+                return name, nil
+            }
+        }
+    }
+    return "", git.ErrRemoteNotFound
+}
+
+// Generates a random remote name of length 8 
+// Returns remotename, error. 
+func(r *Repository) CreateRemote() (remoteName string, error) { // Refactor dependencies
+    remoteName = randstr.Hex(8)
+    remoteURL := s.getURL()
+    r, err := r.repo.CreateRemote(&config.RemoteConfig{
+        Name: remoteName,
+        URLs: []string{remoteURL},
+    })
+    if err != nil {
+        return nil, err
+    }
+    return
+}
+
 //Convinence function to avoid checking what kind of url we have all the time
 func(s *SyncConfig) getURL() (string) {
     if s.HTTPS != nil {
@@ -201,12 +341,19 @@ func(s *SyncConfig) getURL() (string) {
     return s.SSH
 }
 
-func CloneHTTPS(remoteURL string, basicAuth string, branch string) (error) {
+func splitBasicAuth(basicAuth string) (username, password string, error) {
     credentialsSlice := strings.SplitN(basicAuth, ":", 1)
     if len(credentialsSlice) != 2 {
-        return ErrInvalidBasicAuth
+        return "", "", ErrInvalidBasicAuth
     }
-    username, password := credentialsSlice[0], credentialsSlice[1]
+    return username, password = credentialsSlice[0], credentialsSlice[1], nil
+}
+
+func CloneHTTPS(remoteURL string, branch string, basicAuth string,) (error) {
+    username, password, err := splitBasicAuth(basicAuth)
+    if err != nil {
+        return err
+    }
     _, err := git.PlainClone(RepoPath, false, &git.CloneOptions{
         URL: remoteURL,
         RemoteName: branch,
@@ -221,7 +368,9 @@ func CloneHTTPS(remoteURL string, basicAuth string, branch string) (error) {
     return nil
 }
 
-func() CloneSSH(remoteURL string, sshKey []byte) (error) {
+// Clones a repository using ssh url formatting and a valid sshKey read as byte slice
+// Returns error if unable to clone the specified repository url
+func CloneSSH(remoteURL, branch string, sshKey []byte) (error) {
     publicKey, err := ssh.NewPublicKeys("git", sshKey, "")
     if err != nil {
         return err
@@ -229,7 +378,7 @@ func() CloneSSH(remoteURL string, sshKey []byte) (error) {
     _, err = git.PlainClone(RepoPath, false, &git.CloneOptions {
         URL: s.SSH,
         Progress: os.Stdout,
-        RemoteName: s.Branch,
+        RemoteName: branch,
         Auth: publicKey,
    })
    if err != nil {
@@ -283,120 +432,7 @@ func(s *SyncConfig) ValidateAndSetDefaults() (error) {
     }
 }
 
-//Retrieves the remote name specified by the SyncConfigs url
-// if a remote name cannot be found an error will be returned
-func (r *Repository) GetRemoteName() (remoteName string, error) { //Refactor dependencies interface
-    remotes, err := r.Remotes()
-    if err != nil {
-        return "", err
-    }
-    for _, remote := range remotes {
-        name := remote.Config.Name
-        URLs := remote.Config().URLs
-        for _, URL := range URLs {
-            if URL == remoteURL {
-                // Return the first remote that matches
-                return name, nil
-            }
-        }
-    }
-    return "", git.ErrRemoteNotFound
-}
 
-// Generates a random remote name of length 8 
-// Returns remotename, error. 
-func(s *SyncConfig) CreateRemote(r *git.Repository) (remoteName string, error) { // Refactor dependencies
-    remoteName = randstr.Hex(8)
-    remoteURL := s.getURL()
-    r, err := r.CreateRemote(&config.RemoteConfig{
-        Name: remoteName,
-        URLs: []string{remoteURL},
-    })
-    if err != nil {
-        return nil, err
-    }
-    return
-}
-
-// Will clone repository with HTTPS url and if not available will
-// assume that SyncConfig contains SSH url and use that.
-// Returns error if unable to clone the specified repository url
-
-func(s *SyncConfig) Push() (error) {
-
-}
-
-func(s *SyncConfig) pushHTTPS() (error) {
-
-}
-
-func(s *SyncConfig) pushSSH() (error) {
-
-}
-func Commit(commitMessage string) {
-
-}
-
-
-func(r *Repository) UpdateOrigin() (error) {
-    // Check that directory exists and is git initialized
-    // if exists -> fetch -> pull newest origin
-    // Check that the repo exists and is set to correct url
-    if _, err := os.Stat(repoPath + / + ".git"); os.IsNotExist(err) {
-        err := s.Clone()
-    // Some repository exists. Compare that we are fetching from the specified one
-    } else {
-        r, err := git.PlainOpen(RepoPath)
-        if err != nil {
-            return err
-        }
-        remoteName, err := s.GetRemoteName(r)
-        if err != nil && err != ErrRemoteNotFound{
-            return err
-        }
-        if remoteName == "" {
-            remoteName, err = CreateRemote(r)
-            if err != nil {
-                return err
-            }
-        }
-        w, err := r.WorkTree()
-        if err != nil {
-            return err
-        }
-        err := w.Pull(&git.PullOptions{RemoteName: remoteName})
-        if err != nil {
-            return err
-        }
-    }
-    return nil
-}
-
-// Checks if there is a difference between local and remote files that are
-// being watched
-// Returns a slice of files that are not in sync with remote
-func(s *SyncConfig) DiffRemoteWithLocal() (filesNotInSync []string, error) {
-    err := s.UpdateOrigin()
-    if err != nil {
-        return err
-    }
-    for _, file := range s.Files {
-        _, fileName := filepath.Split(file)
-        remoteFile := filepath.Join(repoPath, fileName)
-        difference, err := DiffFiles(file, remoteFile)
-        if err != nil {
-            // We ignore this and just log the error
-            // TODO:
-            // On second hand an error here could mean that
-            // the file cannot be found on of the locations
-            // which means that it should be synced
-        }
-        if difference {
-            filesNotInSync = append(filesNotInSync, file)
-        }
-    }
-    return
-}
 // If remote is considered to be the single point of truth this function collects
 // all files which have been changed locally and resets them to the state of the remote
 // files
