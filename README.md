@@ -1,5 +1,8 @@
 # dotsync
-Keep your files synced
+Keep your files synced.
+
+This repository is in a nonworking state at the moment.
+
 ## TODO
 We need to finish backend this means full functionality. Most likely we are implementing it as a backend API server with a Electron frontend.
 
