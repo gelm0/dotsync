@@ -17,9 +17,8 @@ import (
 )
 
 type SyncConfig struct {
-	HTTPS       string   `yaml:"https,omitempty"`
-	SSH         string   `yaml:"ssh,omitempty"`
-	Credentials string   `yaml:"credentials,omitempty"`
+	URL			string   `yaml: "url,omitempty"`
+	KeyFile 	string   `yaml:"sshKey,omitempty"`
 	Branch      string   `yaml:"branch,omitempty"`
 	Files       []string `yaml:"files"`
 }
@@ -146,14 +145,6 @@ var ErrNoRemoteURL = errors.New("Missing remote url")
 // 	return
 // }
 //
-//Convinence function to avoid checking what kind of url we have all the time
-func (s *SyncConfig) getURL() string {
-	if s.HTTPS != "" {
-		return s.HTTPS
-	}
-	return s.SSH
-}
-
 //
 //
 //

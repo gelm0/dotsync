@@ -2,10 +2,10 @@ package dotsync
 
 import (
 	"testing"
-
 	"github.com/stretchr/testify/assert"
 )
 
+/* TODO: Make this generated data */
 const (
 	vimrc             = "test/data/vimrc"
 	vimrcDiff1        = "test/data/vimrc_newline"
