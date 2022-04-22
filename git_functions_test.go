@@ -40,7 +40,7 @@ func generateSSHKeys() ([]byte, []byte) {
 }
 
 func createMockRepository() afero.Fs {
-	appFs := afero.NewOsFs()
+	appFs := afero.NewMemMapFs()
 	appFs.MkdirAll(filepath.Join(RepoPath, ".git"), 0755)
 	appFs.MkdirAll(".ssh", 0755)
 	privateKey, publicKey := generateSSHKeys()
