@@ -17,10 +17,10 @@ import (
 )
 
 type SyncConfig struct {
-	URL			string   `yaml: "url,omitempty"`
-	KeyFile 	string   `yaml:"sshKey,omitempty"`
-	Branch      string   `yaml:"branch,omitempty"`
-	Files       []string `yaml:"files"`
+	URL     string   `yaml: "url,omitempty"`
+	KeyFile string   `yaml:"sshKey,omitempty"`
+	Branch  string   `yaml:"branch,omitempty"`
+	Files   []string `yaml:"files"`
 }
 
 const (
@@ -28,10 +28,12 @@ const (
 )
 
 // Errors
-var ErrNoCredentialsFile = errors.New("Missing credentials file")
-var ErrInvalidBasicAuth = errors.New("Can not extract username, password")
-var ErrNoCredentialsSupplied = errors.New("No basicauth or sshkey supplied")
-var ErrNoRemoteURL = errors.New("Missing remote url")
+var (
+	ErrNoCredentialsFile     = errors.New("missing credentials file")
+	ErrInvalidBasicAuth      = errors.New("can not extract username, password")
+	ErrNoCredentialsSupplied = errors.New("no basicauth or sshkey supplied")
+	ErrNoRemoteURL           = errors.New("missing remote url")
+)
 
 // func copyFile(source string, destination string) error {
 // 	input, err := ioutil.ReadFile(source)
