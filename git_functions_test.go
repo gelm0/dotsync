@@ -1,25 +1,28 @@
 package dotsync
 
 import (
-	"crypto/rsa"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
-	"golang.org/x/crypto/ssh"
-	"path/filepath"
 	"encoding/pem"
+	"path/filepath"
 	"testing"
+
+	"github.com/go-git/go-git/v5"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/crypto/ssh"
 )
 
 var workingConfig = SyncConfig{
-	URL: "http://test.com",
+	URL:     "http://test.com",
 	KeyFile: ".ssh/id_rsa",
-	Branch: "main",
-	Files: []string{},
+	Branch:  "main",
+	Files:   []string{},
 }
 
 func generateSSHKeys() ([]byte, []byte) {
+	// Keep the bytes low to speed up test
 	privateKey, err := rsa.GenerateKey(rand.Reader, 1024)
 	if err != nil {
 		panic("Not able to generate private key")
@@ -49,9 +52,31 @@ func createMockRepository() afero.Fs {
 	return appFs
 }
 
+type mockGitExtension struct{}
+
+func (m *mockGitExtension) plainClone(path string, isBare bool, o *git.CloneOptions) (*git.Repository, error) {
+	fs := afero.NewOsFs()
+	name, err := afero.TempDir(fs, "", "")
+	if err != nil {
+		panic(err)
+	}
+	return git.PlainInit(name, true)
+}
+
+func (m *mockGitExtension) plainOpen(path string) (*git.Repository, error) {
+	fs := afero.NewOsFs()
+	name, err := afero.TempDir(fs, "", "")
+	if err != nil {
+		panic(err)
+	}
+	return git.PlainInit(name, true)
+
+}
+
 func TestNewRepositoryOpens(t *testing.T) {
+	m := &mockGitExtension{}
 	appFs := createMockRepository()
-	_, err := NewRepository(workingConfig, appFs)
+	_, err := NewRepository(workingConfig, appFs, m)
 	assert.NoError(t, err)
 }
 

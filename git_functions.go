@@ -11,6 +11,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 	"github.com/spf13/afero"
 )
+
 type Repository struct {
 	Repo *git.Repository
 }
@@ -22,10 +23,25 @@ type GitOperations interface {
 	Add(filePaths []string) error
 }
 
+type PlainGitOperations interface {
+	plainClone(path string, isBare bool, o *git.CloneOptions) (*git.Repository, error)
+	plainOpen(path string) (*git.Repository, error)
+}
+
+type gitExtension struct{}
+
+func (g *gitExtension) plainClone(path string, isBare bool, o *git.CloneOptions) (*git.Repository, error) {
+	return git.PlainClone(path, isBare, o)
+}
+
+func (g *gitExtension) plainOpen(path string) (*git.Repository, error) {
+	return git.PlainOpen(path)
+}
+
 // Creates and returns a Repository. If nothing exist
 // a clone operation will be performed
 // Returns the repository and a nil error if sucessful
-func NewRepository(s SyncConfig, FS afero.Fs) (*Repository, error) {
+func NewRepository(s SyncConfig, FS afero.Fs, g PlainGitOperations) (*Repository, error) {
 	if FS == nil {
 		FS = afero.NewOsFs()
 	}
@@ -36,14 +52,14 @@ func NewRepository(s SyncConfig, FS afero.Fs) (*Repository, error) {
 	}
 	branch := s.Branch
 	if _, err := FS.Stat(filepath.Join(RepoPath, ".git")); os.IsNotExist(err) {
-			println(err.Error())
-			err := cloneSSH(remoteURL, branch, []byte(authObject))
-			if err != nil {
-				return nil, err
+		println(err.Error())
+		err := cloneSSH(remoteURL, branch, []byte(authObject), g)
+		if err != nil {
+			return nil, err
 		}
 	}
 	r := &Repository{}
-	repo, err := git.PlainOpen(RepoPath)
+	repo, err := g.plainOpen(RepoPath)
 	if err != nil {
 		return nil, err
 	}
@@ -53,12 +69,12 @@ func NewRepository(s SyncConfig, FS afero.Fs) (*Repository, error) {
 
 // Clones a repository using ssh url formatting and a valid sshKey read as byte slice
 // Returns error if unable to clone the specified repository url
-func cloneSSH(remoteURL, branch string, sshKey []byte) error {
+func cloneSSH(remoteURL, branch string, sshKey []byte, g PlainGitOperations) error {
 	publicKey, err := ssh.NewPublicKeys("git", sshKey, "")
 	if err != nil {
 		return err
 	}
-	_, err = git.PlainClone(RepoPath, false, &git.CloneOptions{
+	_, err = g.plainClone(RepoPath, false, &git.CloneOptions{
 		URL:        remoteURL,
 		Progress:   os.Stdout,
 		RemoteName: branch,
@@ -91,7 +107,7 @@ func (r *Repository) Commit(commitMessage string) error {
 
 func (r *Repository) Pull(remoteName string) error {
 	if remoteName == "" {
-		return errors.New("No remotename supplied")
+		return errors.New("no remotename supplied")
 	}
 	w, err := r.Repo.Worktree()
 	if err != nil {
