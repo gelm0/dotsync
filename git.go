@@ -149,6 +149,18 @@ func (r *Repository) Push(remoteName, basicAuth string, sshKey []byte) error {
 	return nil
 }
 
-func Add(filePaths []string) error {
+func (r *Repository) Add(filePaths []string) error {
+	workTree, err := r.Repo.Worktree()
+	if err != nil {
+		return err
+	}
+	for _, file := range filePaths {
+		_, err := workTree.Add(file)
+		if err != nil {
+			// Bit naive implementation we should do something better
+			// with error handling here
+			return err
+		}
+	}
 	return nil
 }
