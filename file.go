@@ -1,11 +1,11 @@
 package dotsync
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"os"
-
-	diff "github.com/sergi/go-diff/diffmatchpatch"
 )
 
 // Diffs two files by reading them in chunks of 1024 bytes
@@ -30,63 +30,22 @@ func DiffFiles(filePath1 string, filePath2 string) (bool, error) {
 	defer file1.Close()
 	defer file2.Close()
 	// First check if there is a difference in file size
-	sizeDiffers, err := diffSize(file1, file2)
-	if sizeDiffers || err != nil {
-		return sizeDiffers, err
-	}
-	// We did not find any file size difference but we can not be sure that nothing changed
-	return diffChars(file1, file2)
-}
-
-// Diffs size of two files, returns true if difference is found
-func diffSize(file1, file2 *os.File) (bool, error) {
-	f1Info, err := file1.Stat()
+	fileHash1, err := getFileHash(file1)
 	if err != nil {
 		return true, err
 	}
-	f2Info, err := file1.Stat()
+	fileHash2, err := getFileHash(file2)
 	if err != nil {
 		return true, err
 	}
-	return f1Info.Size() != f2Info.Size(), nil
+	return fileHash1 != fileHash2, nil
 }
 
-// // Start by diffing first 1024 and last 1024 bytes
-func diffChars(file1, file2 *os.File) (bool, error) {
-	const bufferSize = 1024
-	buffer1 := make([]byte, bufferSize)
-	buffer2 := make([]byte, bufferSize)
-	diffMatchPatch := diff.New()
-	// We don't want to break the loop until the diff has been run
-	breakLoop := false
-	for {
-		read1, err := file1.Read(buffer1)
-		if err != nil {
-			if err != io.EOF {
-				return true, err
-			}
-			breakLoop = true
-		}
-		read2, err := file2.Read(buffer2)
-		if err != nil {
-			if err != io.EOF {
-				return true, err
-			}
-			breakLoop = true
-		}
-		difference := diffMatchPatch.DiffMain(string(buffer1[:read1]), string(buffer2[:read2]), false)
-		if len(difference) > 0 {
-			for i := 0; i < len(difference); i++ {
-				// 0 is equivalent to Equals, hence we check that everything that is not equal
-				// is returned as a difference
-				if difference[i].Type != 0 {
-					return true, nil
-				}
-			}
-		}
-		if breakLoop {
-			break
-		}
+// Generates a SHA256 hash of the file
+func getFileHash(file *os.File) (string, error) {
+	shaHasher := sha256.New()
+	if _, err := io.Copy(shaHasher, file); err != nil {
+		return "", err
 	}
-	return false, nil
+	return hex.EncodeToString(shaHasher.Sum(nil)), nil
 }
