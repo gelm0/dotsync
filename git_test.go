@@ -5,13 +5,12 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"path/filepath"
-	"testing"
-
 	"github.com/go-git/go-git/v5"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/ssh"
+	"path/filepath"
+	"testing"
 )
 
 var workingConfig = SyncConfig{
@@ -42,9 +41,8 @@ func generateSSHKeys() ([]byte, []byte) {
 	return privateBytes, publicBytes
 }
 
-func createMockRepository() afero.Fs {
+func createTempSSSHDir() afero.Fs {
 	appFs := afero.NewMemMapFs()
-	appFs.MkdirAll(filepath.Join(RepoPath, ".git"), 0755)
 	appFs.MkdirAll(".ssh", 0755)
 	privateKey, publicKey := generateSSHKeys()
 	afero.WriteFile(appFs, ".ssh/id_rsa", privateKey, 0600)
@@ -52,38 +50,53 @@ func createMockRepository() afero.Fs {
 	return appFs
 }
 
-type mockGitExtension struct{}
+type mockGitExtension struct {
+	plainCloneCalled int
+	plainOpenCalled  int
+}
 
 func (m *mockGitExtension) plainClone(path string, isBare bool, o *git.CloneOptions) (*git.Repository, error) {
-	fs := afero.NewOsFs()
-	name, err := afero.TempDir(fs, "", "")
-	if err != nil {
-		panic(err)
-	}
-	return git.PlainInit(name, true)
+	m.plainCloneCalled += 1
+	return &git.Repository{}, nil
 }
 
 func (m *mockGitExtension) plainOpen(path string) (*git.Repository, error) {
-	fs := afero.NewOsFs()
-	name, err := afero.TempDir(fs, "", "")
-	if err != nil {
-		panic(err)
-	}
-	return git.PlainInit(name, true)
-
+	m.plainOpenCalled += 1
+	return &git.Repository{}, nil
 }
 
 func TestNewRepositoryOpens(t *testing.T) {
-	m := &mockGitExtension{}
-	appFs := createMockRepository()
-	_, err := NewRepository(workingConfig, appFs, m)
+	m := &mockGitExtension{
+		plainCloneCalled: 0,
+		plainOpenCalled:  0,
+	}
+	sshFs := createTempSSSHDir()
+	sshFs.MkdirAll(filepath.Join(RepoPath, ".git"), 0755)
+	r, err := newRepository(workingConfig, sshFs, m)
 	assert.NoError(t, err)
+	assert.NotNil(t, r)
+	assert.Equal(t, 1, m.plainOpenCalled)
 }
 
 func TestNewRepositoryThrowsErrorWithBadKey(t *testing.T) {
-
+	m := &mockGitExtension{
+		plainCloneCalled: 0,
+		plainOpenCalled:  0,
+	}
+	sshFs := createTempSSSHDir()
+	afero.WriteFile(sshFs, ".ssh/id_rsa", []byte{}, 0600)
+	_, err := newRepository(workingConfig, sshFs, m)
+	assert.Error(t, err)
 }
 
 func TestNewRepositoryClonesWhenEmpty(t *testing.T) {
-
+	m := &mockGitExtension{
+		plainCloneCalled: 0,
+		plainOpenCalled:  0,
+	}
+	sshFs := createTempSSSHDir()
+	r, err := newRepository(workingConfig, sshFs, m)
+	assert.NoError(t, err)
+	assert.NotNil(t, r)
+	assert.Equal(t, 1, m.plainCloneCalled)
 }
