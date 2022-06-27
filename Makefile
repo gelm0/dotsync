@@ -1,13 +1,22 @@
-.PHONY: all test clean
+.PHONY: all
 
-clean:
-	go clean
-	go mod tidy
+# Target all gofiles
+TARGETS = ./...
 
-test:
-	go test -v
+all: mod clean vet test install
 
 install:
-	go test
-	go vet
-	go install
+	go install $(TARGETS)
+
+mod:
+	go mod tidy
+
+clean:
+	go clean 
+
+vet:
+	go vet $(TARGETS)
+	golangci-lint run --enable-all
+
+test: 
+	go test $(TARGETS)

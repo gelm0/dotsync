@@ -1,4 +1,4 @@
-package dotsync
+package main
 
 import (
 	"fmt"

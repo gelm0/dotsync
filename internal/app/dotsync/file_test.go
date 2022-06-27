@@ -6,14 +6,15 @@ import (
 )
 
 /* TODO: Make this generated data */
+const rootFolder = "../../"
 const (
-	vimrc             = "test/data/vimrc"
-	vimrcDiff1        = "test/data/vimrc_newline"
-	vimrcDiff2        = "test/data/vimrc_new_options"
-	vimrcSameSizeDiff = "test/data/vimrc_diff_size"
-	vimrcIdentical    = "test/data/vimrc_identical"
-	emptyFile         = "test/data/emptyfile"
-	nonExistingFile   = "test/data/dont_exist"
+	vimrc             = rootFolder + "test/data/vimrc"
+	vimrcDiff1        = rootFolder + "test/data/vimrc_newline"
+	vimrcDiff2        = rootFolder + "test/data/vimrc_new_options"
+	vimrcSameSizeDiff = rootFolder + "test/data/vimrc_diff_size"
+	vimrcIdentical    = rootFolder + "test/data/vimrc_identical"
+	emptyFile         = rootFolder + "test/data/emptyfile"
+	nonExistingFile   = rootFolder + "test/data/dont_exist"
 )
 
 func TestDiffFilesIdentical(t *testing.T) {
