@@ -1,4 +1,4 @@
-.PHONY: all
+.PHONY: all install mod clean vet test
 
 # Target all gofiles
 TARGETS = ./...
@@ -19,4 +19,4 @@ vet:
 	golangci-lint run --enable-all
 
 test: 
-	go test $(TARGETS)
+	go test -v $(TARGETS)
