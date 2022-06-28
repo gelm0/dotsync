@@ -52,14 +52,14 @@ func newRepository(s SyncConfig, fs afero.Fs, g PlainGitOperations) (*Repository
 	if g == nil {
 		g = &gitExtension{}
 	}
-	remoteURL := s.URL
-	authObject, err := afero.ReadFile(fs, s.KeyFile)
+	remoteURL := s.GitConfig.URL
+	authObject, err := afero.ReadFile(fs, s.GitConfig.KeyFile)
 	if err != nil {
 		return nil, err
 	}
 	var repo = &git.Repository{}
 	var r = &Repository{}
-	branch := s.Branch
+	branch := s.GitConfig.Branch
 	if _, err := fs.Stat(filepath.Join(RepoPath, ".git")); errors.Is(err, os.ErrNotExist) {
 		repo, err = cloneSSH(remoteURL, branch, []byte(authObject), g)
 		if err != nil {

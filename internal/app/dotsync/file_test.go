@@ -6,7 +6,7 @@ import (
 )
 
 /* TODO: Make this generated data */
-const rootFolder = "../../"
+const rootFolder = "../../../"
 const (
 	vimrc             = rootFolder + "test/data/vimrc"
 	vimrcDiff1        = rootFolder + "test/data/vimrc_newline"

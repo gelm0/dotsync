@@ -14,9 +14,11 @@ import (
 )
 
 var workingConfig = SyncConfig{
-	URL:     "http://test.com",
-	KeyFile: ".ssh/id_rsa",
-	Branch:  "main",
+	GitConfig: GitConfig {
+		URL:     "http://test.com",
+		KeyFile: ".ssh/id_rsa",
+		Branch:  "main",
+	},
 	Files:   []string{},
 }
 
