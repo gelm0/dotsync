@@ -5,7 +5,10 @@ import (
 
 	// 	"strings"
 	// 	"time"
+	"fmt"
 	"errors"
+	"os"
+
 	"github.com/spf13/afero"
 	"gopkg.in/yaml.v3"
 	//
@@ -18,8 +21,8 @@ import (
 )
 
 type GitConfig struct {
-	URL     string   `yaml:"url,omitempty"`
-	KeyFile string   `yaml:"sshKey,omitempty"`
+	URL     string   `yaml:"url"`
+	KeyFile string   `yaml:"sshKey"`
 	Branch  string   `yaml:"branch,omitempty"`
 }
 
@@ -34,16 +37,34 @@ const (
 
 // Errors
 var (
-	ErrNoCredentialsFile     = errors.New("missing credentials file")
-	ErrInvalidBasicAuth      = errors.New("can not extract username, password")
-	ErrNoCredentialsSupplied = errors.New("no basicauth or sshkey supplied")
-	ErrNoRemoteURL           = errors.New("missing remote url")
+	ErrMissingGitConfig 	 = errors.New("no git credentials supplied")
+	ErrMissingGitURL     	 = errors.New("missing git url")
+	ErrMissingSSHKeyFile 	 = errors.New("missing sshkey file")
+	ErrInvalidSSHKey	 	 = errors.New("sshkey invalid")
 )
 
 // 1. Files are synced from local to git repository
 // 2. Files are synced from git to local
 
-func ValidateSyncConfig() error {
+// Just nonempty validation for now
+func (s SyncConfig) Validate(afero afero.Fs) error {
+	if s.GitConfig == (GitConfig{}) {
+		return ErrMissingGitConfig
+	}
+
+	config := s.GitConfig
+	if config.URL == "" {
+		return ErrMissingGitURL
+	}
+
+	if config.KeyFile == "" {
+		return ErrInvalidSSHKey
+	}
+
+	if _, err := afero.Stat(config.KeyFile); errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%w: %s", err, config.KeyFile)
+	}
+	
 	return nil
 }
 
