@@ -43,11 +43,15 @@ var (
 	ErrInvalidSSHKey	 	 = errors.New("sshkey invalid")
 )
 
+var aferoFs = afero.Afero{
+	Fs: afero.NewOsFs(),
+}
+
 // 1. Files are synced from local to git repository
 // 2. Files are synced from git to local
 
 // Just nonempty validation for now
-func (s SyncConfig) Validate(afero afero.Fs) error {
+func (s SyncConfig) Validate() error {
 	if s.GitConfig == (GitConfig{}) {
 		return ErrMissingGitConfig
 	}
@@ -61,15 +65,15 @@ func (s SyncConfig) Validate(afero afero.Fs) error {
 		return ErrInvalidSSHKey
 	}
 
-	if _, err := afero.Stat(config.KeyFile); errors.Is(err, os.ErrNotExist) {
+	if _, err := aferoFs.Stat(config.KeyFile); errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("%w: %s", err, config.KeyFile)
 	}
 	
 	return nil
 }
 
-func OpenSyncConfig(configPath string, afero afero.Afero) (SyncConfig, error) {
-	bytes, err := afero.ReadFile(configPath)
+func OpenSyncConfig(configPath string) (SyncConfig, error) {
+	bytes, err := aferoFs.ReadFile(configPath)
 	config := SyncConfig{}
 
 	if err != nil {

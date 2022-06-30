@@ -42,17 +42,16 @@ func (g *gitExtension) plainOpen(path string) (*git.Repository, error) {
 // a clone operation will be performed
 // Returns the repository and a nil error if sucessful
 func NewRepository(s SyncConfig) (*Repository, error) {
-	return newRepository(s, nil, nil)
+	return newRepository(s, nil)
 }
 
-func newRepository(s SyncConfig, fs afero.Fs, g PlainGitOperations) (*Repository, error) {
-	if fs == nil {
-		fs = afero.NewOsFs()
-	}
+func newRepository(s SyncConfig, g PlainGitOperations) (*Repository, error) {
 	if g == nil {
 		g = &gitExtension{}
 	}
+
 	remoteURL := s.GitConfig.URL
+	fs := aferoFs.Fs
 	authObject, err := afero.ReadFile(fs, s.GitConfig.KeyFile)
 	if err != nil {
 		return nil, err
@@ -133,7 +132,7 @@ func (r *Repository) Pull(remoteName string) error {
 func (r *Repository) Push(remoteName, basicAuth string, sshKey []byte) error {
 	// No basic auth found, trying sshAuth
 	if sshKey == nil {
-		return ErrNoCredentialsSupplied
+		return ErrInvalidSSHKey
 	}
 	publicKey, err := ssh.NewPublicKeys("git", sshKey, "")
 	if err != nil {

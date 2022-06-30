@@ -44,7 +44,10 @@ func generateSSHKeys() ([]byte, []byte) {
 }
 
 func createTempSSSHDir() afero.Fs {
-	appFs := afero.NewMemMapFs()
+	aferoFs = afero.Afero{
+		Fs: afero.NewMemMapFs(),
+	}
+	appFs := aferoFs.Fs
 	appFs.MkdirAll(".ssh", 0755)
 	privateKey, publicKey := generateSSHKeys()
 	afero.WriteFile(appFs, ".ssh/id_rsa", privateKey, 0600)
@@ -74,7 +77,7 @@ func TestNewRepositoryOpens(t *testing.T) {
 	}
 	sshFs := createTempSSSHDir()
 	sshFs.MkdirAll(filepath.Join(RepoPath, ".git"), 0755)
-	r, err := newRepository(workingConfig, sshFs, m)
+	r, err := newRepository(workingConfig, m)
 	assert.NoError(t, err)
 	assert.NotNil(t, r)
 	assert.Equal(t, 1, m.plainOpenCalled)
@@ -87,7 +90,7 @@ func TestNewRepositoryThrowsErrorWithBadKey(t *testing.T) {
 	}
 	sshFs := createTempSSSHDir()
 	afero.WriteFile(sshFs, ".ssh/id_rsa", []byte{}, 0600)
-	_, err := newRepository(workingConfig, sshFs, m)
+	_, err := newRepository(workingConfig, m)
 	assert.Error(t, err)
 }
 
@@ -96,8 +99,8 @@ func TestNewRepositoryClonesWhenEmpty(t *testing.T) {
 		plainCloneCalled: 0,
 		plainOpenCalled:  0,
 	}
-	sshFs := createTempSSSHDir()
-	r, err := newRepository(workingConfig, sshFs, m)
+	_ = createTempSSSHDir()
+	r, err := newRepository(workingConfig, m)
 	assert.NoError(t, err)
 	assert.NotNil(t, r)
 	assert.Equal(t, 1, m.plainCloneCalled)
