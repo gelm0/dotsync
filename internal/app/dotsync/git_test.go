@@ -76,7 +76,7 @@ func TestNewRepositoryOpens(t *testing.T) {
 		plainOpenCalled:  0,
 	}
 	sshFs := createTempSSSHDir()
-	sshFs.MkdirAll(filepath.Join(RepoPath, ".git"), 0755)
+	sshFs.MkdirAll(filepath.Join(DotSyncPath, ".git"), 0755)
 	r, err := newRepository(workingConfig, m)
 	assert.NoError(t, err)
 	assert.NotNil(t, r)

@@ -59,13 +59,13 @@ func newRepository(s SyncConfig, g PlainGitOperations) (*Repository, error) {
 	var repo = &git.Repository{}
 	var r = &Repository{}
 	branch := s.GitConfig.Branch
-	if _, err := fs.Stat(filepath.Join(RepoPath, ".git")); errors.Is(err, os.ErrNotExist) {
+	if _, err := fs.Stat(filepath.Join(DotSyncPath, ".git")); errors.Is(err, os.ErrNotExist) {
 		repo, err = cloneSSH(remoteURL, branch, []byte(authObject), g)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		repo, err = g.plainOpen(RepoPath)
+		repo, err = g.plainOpen(DotSyncPath)
 		if err != nil {
 			return nil, err
 		}
@@ -81,7 +81,7 @@ func cloneSSH(remoteURL, branch string, sshKey []byte, g PlainGitOperations) (*g
 	if err != nil {
 		return nil, err
 	}
-	r, err := g.plainClone(RepoPath, false, &git.CloneOptions{
+	r, err := g.plainClone(DotSyncPath, false, &git.CloneOptions{
 		URL:        remoteURL,
 		Progress:   os.Stdout,
 		RemoteName: branch,

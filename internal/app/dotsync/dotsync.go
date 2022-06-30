@@ -22,17 +22,19 @@ import (
 
 type GitConfig struct {
 	URL     string   `yaml:"url"`
-	KeyFile string   `yaml:"sshKey"`
+	KeyFile	string   `yaml:"sshKey"`
 	Branch  string   `yaml:"branch,omitempty"`
 }
 
 type SyncConfig struct {
-	GitConfig GitConfig `yaml:"gitconfig"`
-	Files   []string 	`yaml:"files"`
+	GitConfig 	GitConfig 	`yaml:"gitconfig"`
+	Path		string		`yaml:"path"`
+	Files		[]string 	`yaml:"files"`
+	FileIndexes map[string][]byte
 }
 
 const (
-	RepoPath = "/tmp/dotsync"
+	DotSyncPath = "/tmp/dotsync"
 )
 
 // Errors
@@ -68,6 +70,10 @@ func (s SyncConfig) Validate() error {
 	if _, err := aferoFs.Stat(config.KeyFile); errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("%w: %s", err, config.KeyFile)
 	}
+
+	if s.Path == "" {
+		s.Path = DotSyncPath
+	}
 	
 	return nil
 }
@@ -81,6 +87,9 @@ func OpenSyncConfig(configPath string) (SyncConfig, error) {
 	}
 	err = yaml.Unmarshal(bytes, &config)
 	if err != nil {
+		return config, err
+	}
+	if err = config.Validate(); err != nil {
 		return config, err
 	}
 	return config, nil
