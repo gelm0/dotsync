@@ -1,67 +1,76 @@
 package dotsync
 
 import (
-	"crypto/sha1"
-	"errors"
 	"bytes"
+	"crypto/sha1"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"github.com/spf13/afero"
 )
 
-// Diffs two files by reading them in chunks of 1024 bytes
-// first checks if the two files are of different size and if no
-// difference is found continues to check the difference
-// returns true if difference is found
 const idxFileName = ".idx"
 
-func openFile(filePath string) (afero.File, error) {
+func (s *SyncConfig) openIndexFile() (afero.File, error) {
 	fs := aferoFs.Fs
 	idxFile, err := fs.OpenFile(filepath.Join(
-		filePath, idxFileName), os.O_RDWR|os.O_CREATE, 0666)
+		s.Path, idxFileName), os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, err
 	}
 	return idxFile, nil
 }
 
-// IndexFiles takes all files in the config and generates
-// a sha1 index of the file. The index file is assumed to be
-// in the same order as the config listed. It is considered
-// corrupt if out of order and a new 
-// TODO: Prob not return error from this
-func (s *SyncConfig) IndexFiles(idxFile afero.File) error {
-	for _, filePath := range s.Files {
-		f, err := aferoFs.Open(filePath); if err != nil {
-			return err
-		}
-		hash, err := sha1FileHash(f)
-		if err != nil {
-			return err
-		}
-		s.FileIndexes[filePath] = hash
+// Save this for later ideas
+func (s *SyncConfig) IndexFile(filePath string, idxFile afero.File) ([]byte, error) {
+	hash := []byte{}
+	f, err := aferoFs.Open(filePath); if err != nil {
+		return hash, err
 	}
-	return nil
+	hash, err = sha1FileHash(f)
+	if err != nil {
+		return hash, err
+	}
+	return hash, nil
 }
 
-func DiffFiles(filePath1 string, filePath2 string) (bool, error) {
-	if filePath1 == "" || filePath2 == "" {
-		return true, errors.New("Empty path supplied")
+// Test all files if they have been changed
+// Returns a set of files that need to be resynced
+func (s *SyncConfig) IndexFiles() ([]string, error) {
+	resyncFiles := []string{}
+	for _, localFile := range s.Files {
+		if localFile == "" {
+			continue
+		}
+		splits := strings.Split(localFile, "/")
+		fileName := splits[len(splits) - 1]
+		originFile := filepath.Join(s.Path, fileName)
+		file1, err := aferoFs.Open(localFile)
+		if err != nil {
+			// Might change this to log directly later, for now we return it
+			return resyncFiles, err
+		}
+		file2, err := aferoFs.Open(originFile)
+		if err != nil {
+			// Might change this to log directly later, for now we return it
+			return resyncFiles, err
+		}
+		defer file1.Close()
+		defer file2.Close()
+		ok, err := DiffFiles(file1, file2)
+		if err != nil {
+			return resyncFiles, err
+		}
+		if !ok {
+			resyncFiles = append(resyncFiles, localFile)
+		}
+
 	}
-	file1, err := aferoFs.Open(filePath1)
-	if err != nil {
-		// Might change this to log directly later, for now we return it
-		return true, err
-	}
-	file2, err := aferoFs.Open(filePath2)
-	if err != nil {
-		// Might change this to log directly later, for now we return it
-		return true, err
-	}
-	// Make sure we close files when we are done
-	defer file1.Close()
-	defer file2.Close()
+	return resyncFiles, nil
+}
+
+func DiffFiles(file1 afero.File, file2 afero.File) (bool, error) {
 	// First check if there is a difference in file size
 	fileHash1, err := sha1FileHash(file1)
 	if err != nil {
