@@ -3,6 +3,7 @@ package dotsync
 import (
 	"bytes"
 	"crypto/sha1"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -37,8 +38,9 @@ func (s *SyncConfig) IndexFile(filePath string, idxFile afero.File) ([]byte, err
 
 // Test all files if they have been changed
 // Returns a set of files that need to be resynced
-func (s *SyncConfig) IndexFiles() ([]string, error) {
+func (s *SyncConfig) IndexFiles() ([]string, []string, error) {
 	resyncFiles := []string{}
+	deleteFiles := []string{}
 	for _, localFile := range s.Files {
 		if localFile == "" {
 			continue
@@ -46,28 +48,40 @@ func (s *SyncConfig) IndexFiles() ([]string, error) {
 		splits := strings.Split(localFile, "/")
 		fileName := splits[len(splits) - 1]
 		originFile := filepath.Join(s.Path, fileName)
-		file1, err := aferoFs.Open(localFile)
-		if err != nil {
-			// Might change this to log directly later, for now we return it
-			return resyncFiles, err
+		file1, errLocal := aferoFs.Open(localFile)
+		if errLocal != nil {
+			if errors.Is(os.ErrNotExist, errLocal) {
+				deleteFiles = append(deleteFiles, localFile)
+			} else {
+				// TODO: Add some meaningful log message
+				// We continue 
+				continue
+			}
 		}
-		file2, err := aferoFs.Open(originFile)
-		if err != nil {
-			// Might change this to log directly later, for now we return it
-			return resyncFiles, err
+		file2, errOrigin := aferoFs.Open(originFile)
+		if errOrigin != nil {
+			// File does not exist in origin, check that it exist in local
+			if !errors.Is(os.ErrNotExist, errLocal) {
+				resyncFiles = append(resyncFiles, localFile)
+			} else {
+				// TODO: Add some meaningful log message
+				// We continue 
+				continue
+			}
 		}
 		defer file1.Close()
 		defer file2.Close()
 		ok, err := DiffFiles(file1, file2)
 		if err != nil {
-			return resyncFiles, err
+			// TODO: Add log statement here
+			continue
 		}
 		if !ok {
 			resyncFiles = append(resyncFiles, localFile)
 		}
 
 	}
-	return resyncFiles, nil
+	return resyncFiles, deleteFiles, nil
 }
 
 func DiffFiles(file1 afero.File, file2 afero.File) (bool, error) {

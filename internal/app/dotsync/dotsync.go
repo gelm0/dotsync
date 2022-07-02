@@ -30,7 +30,6 @@ type SyncConfig struct {
 	GitConfig 	GitConfig 	`yaml:"gitconfig"`
 	Path		string		`yaml:"path"`
 	Files		[]string 	`yaml:"files"`
-	FileIndexes map[string][]byte
 }
 
 const (
@@ -39,10 +38,10 @@ const (
 
 // Errors
 var (
-	ErrMissingGitConfig 	 = errors.New("no git credentials supplied")
-	ErrMissingGitURL     	 = errors.New("missing git url")
-	ErrMissingSSHKeyFile 	 = errors.New("missing sshkey file")
-	ErrInvalidSSHKey	 	 = errors.New("sshkey invalid")
+	ErrMissingGitConfig 	= errors.New("no git credentials supplied")
+	ErrMissingGitURL     	= errors.New("missing git url")
+	ErrMissingSSHKeyFile 	= errors.New("missing sshkey file")
+	ErrInvalidSSHKey		= errors.New("sshkey invalid")
 )
 
 var aferoFs = afero.Afero{
