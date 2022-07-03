@@ -5,10 +5,13 @@ import (
 
 	// 	"strings"
 	// 	"time"
-	"fmt"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 
+	"github.com/rifflock/lfshook"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/afero"
 	"gopkg.in/yaml.v3"
 	//
@@ -46,6 +49,19 @@ var (
 
 var aferoFs = afero.Afero{
 	Fs: afero.NewOsFs(),
+}
+
+func SetupLogging(logDir string) *logrus.Logger {
+	pathMap := lfshook.PathMap{
+		logrus.InfoLevel: filepath.Join(logDir, "info.log"),
+		logrus.ErrorLevel: filepath.Join(logDir, "error.log"),
+	}
+	log := logrus.New()
+	log.Hooks.Add(lfshook.NewHook(
+		pathMap,
+		&logrus.JSONFormatter{},
+	))
+	return log
 }
 
 // 1. Files are synced from local to git repository
