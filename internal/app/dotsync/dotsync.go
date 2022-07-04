@@ -1,10 +1,6 @@
 package dotsync
 
 import (
-	// 	"errors"
-
-	// 	"strings"
-	// 	"time"
 	"errors"
 	"fmt"
 	"os"
@@ -14,13 +10,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/afero"
 	"gopkg.in/yaml.v3"
-	//
-	// 	"github.com/go-git/go-git/v5"
-	// 	"github.com/go-git/go-git/v5/plumbing/object"
-	// 	"github.com/go-git/go-git/v5/plumbing/transport/http"
-	// 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
-	// 	"github.com/thanhpk/randstr" // Random string package
-	// 	"gopkg.in/yaml.v2"
 )
 
 type GitConfig struct {
@@ -53,13 +42,17 @@ var aferoFs = afero.Afero{
 
 var log *logrus.Logger
 
+// Setup inital logging to stderr
+func init() {
+	log = logrus.New()
+}
+
 func SetupLogging(logDir string) *logrus.Logger {
 	// TODO: Syslog instead?
 	pathMap := lfshook.PathMap{
 		logrus.InfoLevel: filepath.Join(logDir, "info.log"),
 		logrus.ErrorLevel: filepath.Join(logDir, "error.log"),
 	}
-	log := logrus.New()
 	log.Hooks.Add(lfshook.NewHook(
 		pathMap,
 		&logrus.JSONFormatter{},
@@ -96,25 +89,25 @@ func (s SyncConfig) Validate() error {
 	return nil
 }
 
-func getConfigPaths() ([]string, error) {
+func getConfigPaths() ([]string) {
+	// TODO: Make the config paths more verbose 
 	configPaths := []string{DotSyncPath}
 	homePath, err := os.UserHomeDir()
 	if err != nil {
-		// Log something
-		return configPaths, err
+		log.Error("Failed to get user home", err)
+		return configPaths
 	}
 	configPaths = append(configPaths, homePath)
+	return configPaths
 }
 
 func OpenSyncConfig() (SyncConfig, error) {
+	config := SyncConfig{}
 	configPaths := getConfigPaths() 
 	for _, configPath := range configPaths {
-	}
-		bytes, openFileError := aferoFs.ReadFile(configPath)
-		config := SyncConfig{}
+		bytes, err := aferoFs.ReadFile(configPath)
 		if err != nil {
-			// TODO: Don't return error immediately here. Log and continue
-			log.Error()
+			log.WithField("path", configPath).Error("Failed to open config file", err)
 			continue
 		}
 		err = yaml.Unmarshal(bytes, &config)
@@ -130,6 +123,23 @@ func OpenSyncConfig() (SyncConfig, error) {
 
 // Syncs the specified local files to a git repository
 func SyncOrigin() {
+	syncConfig, err := OpenSyncConfig()
+	if err != nil {
+		log.Panic("Failed to open config", err)
+		os.Exit(1)
+	}
+	err = syncConfig.Validate()
+	if err != nil {
+		log.Error("Failed to validate config", err)
+		os.Exit(1)
+	}
+	// This feels weird and clunky, think of something better
+	SetupLogging(syncConfig.Path)
+	resync, delete, err := syncConfig.IndexFiles()
+	if err != nil {
+		log.Error("File indexing ran into an issue", err)
+	}
+
 
 
 }
