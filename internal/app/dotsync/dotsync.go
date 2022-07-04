@@ -108,14 +108,14 @@ func getConfigPaths() ([]string, error) {
 
 func OpenSyncConfig() (SyncConfig, error) {
 	configPaths := getConfigPaths() 
-	for _, configPath range confconfigPaths {
+	for _, configPath := range configPaths {
 	}
 		bytes, openFileError := aferoFs.ReadFile(configPath)
 		config := SyncConfig{}
 		if err != nil {
 			// TODO: Don't return error immediately here. Log and continue
+			log.Error()
 			continue
-			return config, err
 		}
 		err = yaml.Unmarshal(bytes, &config)
 		if err != nil {

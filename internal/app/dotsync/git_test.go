@@ -20,6 +20,7 @@ var workingConfig = SyncConfig{
 		Branch:  "main",
 	},
 	Files:   []string{},
+	Path: "/tmp/dotsync",
 }
 
 func generateSSHKeys() ([]byte, []byte) {

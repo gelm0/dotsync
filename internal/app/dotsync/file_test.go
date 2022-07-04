@@ -1,6 +1,7 @@
 package dotsync
 
 import (
+	"os"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -29,6 +30,12 @@ func openFiles(fileNames ...string) []afero.File {
 		files = append(files, f)
 	}
 	return files
+}
+
+func initaliseMemMap() {
+	aferoFs.Fs = afero.NewMemMapFs()
+	aferoFs.MkdirAll("/tmp/dotsync", os.ModePerm)
+	aferoFs.MkdirAll("/tmp/other", os.ModePerm)
 }
 
 func TestDiffFilesIdentical(t *testing.T) {
@@ -65,6 +72,9 @@ func TestDiffFilesChangesIntroduced(t *testing.T) {
 	assert.Equal(t, response, true)
 }
 
+func TestIndexFiles(t *testing.T) {
+	assert.Equal(t, true, true)
+}
 //func TestDiffFilesFileNotExist(t *testing.T) {
 //	files := openFiles(vimrc, nonExistingFile)
 //	response, err := DiffFiles(files[0], files[1])
