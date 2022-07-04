@@ -51,7 +51,10 @@ var aferoFs = afero.Afero{
 	Fs: afero.NewOsFs(),
 }
 
+var log *logrus.Logger
+
 func SetupLogging(logDir string) *logrus.Logger {
+	// TODO: Syslog instead?
 	pathMap := lfshook.PathMap{
 		logrus.InfoLevel: filepath.Join(logDir, "info.log"),
 		logrus.ErrorLevel: filepath.Join(logDir, "error.log"),
@@ -93,19 +96,34 @@ func (s SyncConfig) Validate() error {
 	return nil
 }
 
-func OpenSyncConfig(configPath string) (SyncConfig, error) {
-	bytes, err := aferoFs.ReadFile(configPath)
-	config := SyncConfig{}
+func getConfigPaths() ([]string, error) {
+	configPaths := []string{DotSyncPath}
+	homePath, err := os.UserHomeDir()
+	if err != nil {
+		// Log something
+		return configPaths, err
+	}
+	configPaths = append(configPaths, homePath)
+}
 
-	if err != nil {
-		return config, err
+func OpenSyncConfig() (SyncConfig, error) {
+	configPaths := getConfigPaths() 
+	for _, configPath range confconfigPaths {
 	}
-	err = yaml.Unmarshal(bytes, &config)
-	if err != nil {
-		return config, err
-	}
-	if err = config.Validate(); err != nil {
-		return config, err
+		bytes, openFileError := aferoFs.ReadFile(configPath)
+		config := SyncConfig{}
+		if err != nil {
+			// TODO: Don't return error immediately here. Log and continue
+			continue
+			return config, err
+		}
+		err = yaml.Unmarshal(bytes, &config)
+		if err != nil {
+			return config, err
+		}
+		if err = config.Validate(); err != nil {
+			return config, err
+		}
 	}
 	return config, nil
 }
