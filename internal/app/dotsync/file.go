@@ -3,85 +3,111 @@ package dotsync
 import (
 	"bytes"
 	"crypto/sha1"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
+
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/afero"
 )
 
-const idxFileName = ".idx"
-
-func (s *SyncConfig) openIndexFile() (afero.File, error) {
-	fs := aferoFs.Fs
-	idxFile, err := fs.OpenFile(filepath.Join(
-		s.Path, idxFileName), os.O_RDWR|os.O_CREATE, 0666)
-	if err != nil {
-		return nil, err
-	}
-	return idxFile, nil
+// Internal struct to keep tab of which files we had issues with while trying to determine
+// if they were sync
+type SyncedFile struct {
+	FilePath 	string
+	Error		error
 }
 
-// Save this for later ideas
-func (s *SyncConfig) IndexFile(filePath string, idxFile afero.File) ([]byte, error) {
-	hash := []byte{}
-	f, err := aferoFs.Open(filePath); if err != nil {
-		return hash, err
-	}
-	hash, err = sha1FileHash(f)
-	if err != nil {
-		return hash, err
-	}
-	return hash, nil
-}
 
 // Test all files if they have been changed
 // Returns a set of files that need to be resynced
-func (s *SyncConfig) IndexFiles() ([]string, []string, error) {
-	resyncFiles := []string{}
-	deleteFiles := []string{}
+// TODO: I don't know if the struct SyncedFiles is actually necessary.
+// Using it as a precaution as I want to display some meaningful error message
+// in the gui while syncing files, but it might be that it should be used further
+// in the process and we don't actually care about it right now
+func (s *SyncConfig) IndexFiles() (resync []SyncedFile) {
 	for _, localFile := range s.Files {
 		if localFile == "" {
 			continue
 		}
-		splits := strings.Split(localFile, "/")
-		fileName := splits[len(splits) - 1]
+		fileName := filepath.Base(localFile) 
 		originFile := filepath.Join(s.Path, fileName)
 		file1, errLocal := aferoFs.Open(localFile)
 		if errLocal != nil {
-			if errors.Is(os.ErrNotExist, errLocal) {
-				deleteFiles = append(deleteFiles, localFile)
-			} else {
-				// TODO: Add some meaningful log message
-				// We continue 
+				resync = append(resync, SyncedFile{
+					FilePath: localFile,
+					Error: errLocal,
+				})
+				log.WithField("file", localFile).
+					Error(errLocal)
 				continue
 			}
-		}
 		file2, errOrigin := aferoFs.Open(originFile)
 		if errOrigin != nil {
-			// File does not exist in origin, check that it exist in local
-			if !errors.Is(os.ErrNotExist, errLocal) {
-				resyncFiles = append(resyncFiles, localFile)
-			} else {
-				// TODO: Add some meaningful log message
-				// We continue 
+				resync = append(resync, SyncedFile{
+					FilePath: localFile,
+					Error: errLocal,
+				})
+				log.WithField("file", localFile).
+					Error(errOrigin)
 				continue
 			}
-		}
 		defer file1.Close()
 		defer file2.Close()
 		ok, err := DiffFiles(file1, file2)
 		if err != nil {
-			// TODO: Add log statement here
-			continue
+			log.WithFields(logrus.Fields{
+				"file1": file1.Name(),
+				"file2": file2.Name(),
+			}).Error(err)
 		}
 		if !ok {
-			resyncFiles = append(resyncFiles, localFile)
+			resync = append(resync, SyncedFile{
+				FilePath: localFile,
+				Error: err,
+			})
 		}
 
 	}
-	return resyncFiles, deleteFiles, nil
+	return
+}
+
+// Internal struct to keep track on what we visited in WalkDir
+type walked struct {
+	filesToRemove []string
+	files map[string]bool
+}
+
+// TODO: WE only support a flat file structure, this means that we can have no duplicate files
+func (w *walked) isUnwatched(path string, info os.DirEntry, err error) error {
+	if info.IsDir() {
+		return nil
+	}
+	if _, ok := w.files[info.Name()]; !ok {
+		w.filesToRemove = append(w.filesToRemove, info.Name())
+	}
+	return nil
+}
+
+// Returns all the files that we no longer wish to watch
+// i.e. sync
+func (s *SyncConfig) FindUnwatchedFiles() (unWatched []string) {
+	localPath := s.Path
+	w := walked{
+		filesToRemove: []string{},
+		files: make(map[string]bool),
+	}
+	// Initialise map
+	for _, f := range s.Files {
+		//Strip the local file path
+		fileName := filepath.Base(f)
+		w.files[fileName] = true
+	}
+	err := filepath.WalkDir(localPath, w.isUnwatched)
+	if err != nil {
+		log.Error(err)
+	}
+	return w.filesToRemove
 }
 
 func DiffFiles(file1 afero.File, file2 afero.File) (bool, error) {

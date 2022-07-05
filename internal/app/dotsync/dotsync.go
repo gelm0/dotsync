@@ -135,13 +135,10 @@ func SyncOrigin() {
 	}
 	// This feels weird and clunky, think of something better
 	SetupLogging(syncConfig.Path)
-	resync, delete, err := syncConfig.IndexFiles()
+	resync := syncConfig.IndexFiles()
 	if err != nil {
 		log.Error("File indexing ran into an issue", err)
 	}
-
-
-
 }
 
 // TODO later.
