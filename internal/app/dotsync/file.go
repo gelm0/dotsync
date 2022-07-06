@@ -10,104 +10,62 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/afero"
 )
+/*
+# Algorithm
+We don't longer care about filepaths other then indexing them from that path
+for now we don't care about history either we can implement that later if interesting
+so
 
-// Internal struct to keep tab of which files we had issues with while trying to determine
-// if they were sync
-type SyncedFile struct {
-	FilePath 	string
-	Error		error
+for all files in syncConfig
+	generate sha1hashes
+
+read current index file in dotsync path
+
+if no index file
+	sync all files
+	generate index file
+else
+	keep set of sha1hash
+	remove relative complement of sha1hash in indexfile
+*/
+
+// Each file index contains
+// Path of original file
+// Sha1hash
+// Original filemode
+// Any errors while trying to index it
+type FileIndex struct {
+	Path	string
+	Hash	string
+	Perm	os.FileMode
+}
+
+type Indexes struct {
+	Current	map[FileIndex]bool
+	New		map[FileIndex]bool
 }
 
 
-// Test all files if they have been changed
-// Returns a set of files that need to be resynced
-// TODO: I don't know if the struct SyncedFiles is actually necessary.
-// Using it as a precaution as I want to display some meaningful error message
-// in the gui while syncing files, but it might be that it should be used further
-// in the process and we don't actually care about it right now
-func (s *SyncConfig) IndexFiles() (resync []SyncedFile) {
-	for _, localFile := range s.Files {
-		if localFile == "" {
+func InitialiseIndex(files []string) (index *Indexes) {
+	index = &Indexes{
+		Current: make(map[FileIndex]bool),
+		New: make(map[FileIndex]bool),
+	}
+	for _, filePath := range files {
+		if filePath == "" {
 			continue
 		}
-		fileName := filepath.Base(localFile) 
-		originFile := filepath.Join(s.Path, fileName)
-		file1, errLocal := aferoFs.Open(localFile)
-		if errLocal != nil {
-				resync = append(resync, SyncedFile{
-					FilePath: localFile,
-					Error: errLocal,
-				})
-				log.WithField("file", localFile).
-					Error(errLocal)
-				continue
-			}
-		file2, errOrigin := aferoFs.Open(originFile)
-		if errOrigin != nil {
-				resync = append(resync, SyncedFile{
-					FilePath: localFile,
-					Error: errLocal,
-				})
-				log.WithField("file", localFile).
-					Error(errOrigin)
-				continue
-			}
-		defer file1.Close()
-		defer file2.Close()
-		ok, err := DiffFiles(file1, file2)
+		file, err := aferoFs.Open(filePath)
 		if err != nil {
-			log.WithFields(logrus.Fields{
-				"file1": file1.Name(),
-				"file2": file2.Name(),
-			}).Error(err)
+			log.WithField("file", filePath).
+				Error(err)
+			continue
 		}
-		if !ok {
-			resync = append(resync, SyncedFile{
-				FilePath: localFile,
-				Error: err,
-			})
-		}
+		defer file.Close()
+		hash, err := sha1FileHash(file)
 
 	}
 	return
-}
-
-// Internal struct to keep track on what we visited in WalkDir
-type walked struct {
-	filesToRemove []string
-	files map[string]bool
-}
-
-// TODO: WE only support a flat file structure, this means that we can have no duplicate files
-func (w *walked) isUnwatched(path string, info os.DirEntry, err error) error {
-	if info.IsDir() {
-		return nil
-	}
-	if _, ok := w.files[info.Name()]; !ok {
-		w.filesToRemove = append(w.filesToRemove, info.Name())
-	}
-	return nil
-}
-
-// Returns all the files that we no longer wish to watch
-// i.e. sync
-func (s *SyncConfig) FindUnwatchedFiles() (unWatched []string) {
-	localPath := s.Path
-	w := walked{
-		filesToRemove: []string{},
-		files: make(map[string]bool),
-	}
-	// Initialise map
-	for _, f := range s.Files {
-		//Strip the local file path
-		fileName := filepath.Base(f)
-		w.files[fileName] = true
-	}
-	err := filepath.WalkDir(localPath, w.isUnwatched)
-	if err != nil {
-		log.Error(err)
-	}
-	return w.filesToRemove
 }
 
 func DiffFiles(file1 afero.File, file2 afero.File) (bool, error) {
@@ -131,3 +89,4 @@ func sha1FileHash(file afero.File) ([]byte, error) {
 	}
 	return shaHasher.Sum(nil), nil
 }
+
