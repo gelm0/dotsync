@@ -1,8 +1,10 @@
 package dotsync
 
 import (
-	"bytes"
+	"bufio"
 	"crypto/sha1"
+	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/afero"
 )
+
 /*
 # Algorithm
 We don't longer care about filepaths other then indexing them from that path
@@ -34,38 +37,80 @@ else
 // Sha1hash
 // Original filemode
 // Any errors while trying to index it
-type FileIndex struct {
-	Path	string
-	Hash	string
-	Perm	os.FileMode
+type FileInfo struct {
+	Path string
+	Perm os.FileMode
+	// If file was failed to index
+	Failed bool
 }
 
+// Key is the hash of the file
 type Indexes struct {
-	Current	map[FileIndex]bool
-	New		map[FileIndex]bool
+	Current map[string]FileInfo
+	New     map[string]FileInfo
 }
 
-
-func InitialiseIndex(files []string) (index *Indexes) {
+func InitialiseIndex(dotsyncPath string, files []string) (index *Indexes) {
 	index = &Indexes{
-		Current: make(map[FileIndex]bool),
-		New: make(map[FileIndex]bool),
+		Current: make(map[string]FileInfo),
+		New:     make(map[string]FileInfo),
 	}
 	for _, filePath := range files {
+		failed := false
 		if filePath == "" {
 			continue
 		}
 		file, err := aferoFs.Open(filePath)
 		if err != nil {
+			failed = true
 			log.WithField("file", filePath).
-				Error(err)
+				Error("Failed to open file", err)
 			continue
 		}
 		defer file.Close()
+		fileInfo, err := file.Stat()
+		if err != nil {
+			failed = true
+			log.WithField("file", filePath).
+				Error("Failed to stat", err)
+			continue
+		}
 		hash, err := sha1FileHash(file)
+		if err != nil {
+			failed = true
+			log.WithField("file", filePath).
+				Error("Failed to create hash", err)
+			continue
+		}
+
+		index.New[hash] = FileInfo{
+			Path:   filePath,
+			Perm:   fileInfo.Mode(),
+			Failed: failed,
+		}
 
 	}
+	index.ParseIndexFile(dotsyncPath)
 	return
+}
+
+func (index *Indexes) ParseIndexFile(configPath string) {
+	file, err := aferoFs.Open(filepath.Join(configPath, ".idx"))
+	if err != nil {
+		log.Debug("Failed to open index file. Creating new")
+	}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		var path, hash string
+		var fileMode uint32
+		fmt.Sscanf(scanner.Text(), "%s:%s:%d", &path, &hash, &fileMode)
+		index.Current[hash] = FileInfo{
+			Path:   path,
+			Perm:   fileMode,
+			Failed: false,
+		}
+	}
+
 }
 
 func DiffFiles(file1 afero.File, file2 afero.File) (bool, error) {
@@ -78,15 +123,14 @@ func DiffFiles(file1 afero.File, file2 afero.File) (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	return bytes.Compare(fileHash1,fileHash2) != 0, nil
+	return fileHash1 != fileHash2, nil
 }
 
 // Generates a SHA1 hash of the file
-func sha1FileHash(file afero.File) ([]byte, error) {
+func sha1FileHash(file afero.File) (string, error) {
 	shaHasher := sha1.New()
 	if _, err := io.Copy(shaHasher, file); err != nil {
-		return nil, err
+		return "", err
 	}
-	return shaHasher.Sum(nil), nil
+	return hex.EncodeToString(shaHasher.Sum(nil)), nil
 }
-
