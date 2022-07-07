@@ -104,9 +104,10 @@ func (index *Indexes) ParseIndexFile(configPath string) {
 		var path, hash string
 		var fileMode uint32
 		fmt.Sscanf(scanner.Text(), "%s:%s:%d", &path, &hash, &fileMode)
+		// TODO: Nil check values
 		index.Current[hash] = FileInfo{
 			Path:   path,
-			Perm:   fileMode,
+			Perm:   os.FileMode(fileMode),
 			Failed: false,
 		}
 	}
