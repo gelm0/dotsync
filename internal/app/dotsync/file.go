@@ -34,7 +34,6 @@ else
 
 // Each file index contains
 // Path of original file
-// Sha1hash
 // Original filemode
 // Any errors while trying to index it
 type FileInfo struct {
@@ -44,12 +43,20 @@ type FileInfo struct {
 	Failed bool
 }
 
+// Contains needed fileinfo for new files inexes as well
+// as the previous files parsed from index file
 // Key is the hash of the file
 type Indexes struct {
 	Current map[string]FileInfo
 	New     map[string]FileInfo
 }
 
+const (
+	IndexFileName = ".idx"
+)
+
+// Returns an Indexes struct with the current index of tracked files
+// as well as the previous tracked parsed from the index file
 func InitialiseIndex(dotsyncPath string, files []string) (index *Indexes) {
 	index = &Indexes{
 		Current: make(map[string]FileInfo),
@@ -95,7 +102,7 @@ func InitialiseIndex(dotsyncPath string, files []string) (index *Indexes) {
 }
 
 func (index *Indexes) ParseIndexFile(configPath string) {
-	file, err := aferoFs.Open(filepath.Join(configPath, ".idx"))
+	file, err := aferoFs.Open(filepath.Join(configPath, IndexFileName))
 	if err != nil {
 		log.Debug("Failed to open index file. Creating new")
 	}
@@ -103,15 +110,88 @@ func (index *Indexes) ParseIndexFile(configPath string) {
 	for scanner.Scan() {
 		var path, hash string
 		var fileMode uint32
-		fmt.Sscanf(scanner.Text(), "%s:%s:%d", &path, &hash, &fileMode)
+		n, err := fmt.Sscanf(scanner.Text(), "%s:%s:%d", &path, &hash, &fileMode)
+		if err != nil {
+			log.Error("Problem when scanning indexfile ", err)
+		}
 		// TODO: Nil check values
-		index.Current[hash] = FileInfo{
-			Path:   path,
-			Perm:   os.FileMode(fileMode),
-			Failed: false,
+		if n == 3 {
+			index.Current[hash] = FileInfo{
+				Path:   path,
+				Perm:   os.FileMode(fileMode),
+				Failed: false,
+			}
+		} else {
+			if hash != "" {
+				index.Current[hash] = FileInfo{
+					Path:   path,
+					Perm:   os.FileMode(fileMode),
+					Failed: true,
+				}
+			}
+			log.WithFields(logrus.Fields{
+				"Number": n,
+				"Path":   path,
+				"Perm":   os.FileMode(fileMode),
+			}).Warning("Missing one or more fields in indexfile")
 		}
 	}
+}
 
+// Creates indexfile if not exist otherwise truncates and
+// writes the new index
+func writeIndexFile(configPath string, files map[string]FileInfo) error {
+	filePath := filepath.Join(configPath, IndexFileName)
+	file, err := aferoFs.OpenFile(filePath, os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return err
+	}
+	for k, v := range files {
+		line := fmt.Sprintf("%s:%s:%d", k, v.Path, v.Perm)
+		_, err := file.WriteString(line + "\n")
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyFiles(files map[string]FileInfo) error {
+
+}
+
+func cleanupOldFiles(files map[string]FileInfo) error {
+
+}
+
+func (index *Indexes) CopyAndCleanup(configPath string) {
+	// Current all the files we want to keep
+	// Old all the files that we want to get rid of
+	// Diff these and create a list over what we need to copy
+	// and what we should remove
+	copy := make(map[string]FileInfo)
+	newIndex := make(map[string]FileInfo)
+	for k, v := range index.New {
+		if _, ok := index.Current[k]; !ok {
+			copy[k] = v
+		} else {
+			delete(index.Current, k)
+		}
+		newIndex[k] = v
+	}
+	cleanup := &index.Current
+	err := cleanupOldFiles(cleanup)
+	if err != nil {
+		log.WithField("File", filePath).Error(err)
+	}
+	err = copyFiles(copy)
+	if err != nil {
+		log.WithField("File", filePath).Error(err)
+	}
+	err = writeIndexFile(newIndex)
+	if err != nil {
+		log.WithField("File", filePath).Error(err)
+	}
 }
 
 func DiffFiles(file1 afero.File, file2 afero.File) (bool, error) {
