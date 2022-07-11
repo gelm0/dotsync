@@ -156,12 +156,32 @@ func writeIndexFile(configPath string, files map[string]FileInfo) error {
 	return nil
 }
 
-func copyFiles(files map[string]FileInfo) error {
+func copyFiles(configPath string, files map[string]FileInfo) error {
+	for k, v := range files {
+		copyPath := v.Path
+		originPath := filepath.Join(configPath, k)
 
+		bytesRead, err := aferoFs.ReadFile(copyPath)
+		if err != nil {
+			return err
+		}
+		err = aferoFs.WriteFile(originPath, bytesRead, 0666)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func cleanupOldFiles(files map[string]FileInfo) error {
-
+func cleanupOldFiles(configPath string, files map[string]FileInfo) error {
+	for k, _ := range files {
+		deletePath := filepath.Join(configPath, k)
+		err := aferoFs.Remove(deletePath)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (index *Indexes) CopyAndCleanup(configPath string) {
