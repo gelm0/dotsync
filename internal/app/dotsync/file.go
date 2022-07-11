@@ -199,18 +199,18 @@ func (index *Indexes) CopyAndCleanup(configPath string) {
 		}
 		newIndex[k] = v
 	}
-	cleanup := &index.Current
-	err := cleanupOldFiles(cleanup)
+	cleanup := index.Current
+	err := cleanupOldFiles(configPath, cleanup)
 	if err != nil {
-		log.WithField("File", filePath).Error(err)
+		log.Error(err)
 	}
-	err = copyFiles(copy)
+	err = copyFiles(configPath, copy)
 	if err != nil {
-		log.WithField("File", filePath).Error(err)
+		log.Error(err)
 	}
-	err = writeIndexFile(newIndex)
+	err = writeIndexFile(configPath, newIndex)
 	if err != nil {
-		log.WithField("File", filePath).Error(err)
+		log.Error(err)
 	}
 }
 
