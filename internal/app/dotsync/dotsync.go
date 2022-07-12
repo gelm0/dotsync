@@ -13,15 +13,15 @@ import (
 )
 
 type GitConfig struct {
-	URL     string   `yaml:"url"`
-	KeyFile	string   `yaml:"sshKey"`
-	Branch  string   `yaml:"branch,omitempty"`
+	URL     string `yaml:"url"`
+	KeyFile string `yaml:"sshKey"`
+	Branch  string `yaml:"branch,omitempty"`
 }
 
 type SyncConfig struct {
-	GitConfig 	GitConfig 	`yaml:"gitconfig"`
-	Path		string		`yaml:"path"`
-	Files		[]string 	`yaml:"files"`
+	GitConfig GitConfig `yaml:"gitconfig"`
+	Path      string    `yaml:"path"`
+	Files     []string  `yaml:"files"`
 }
 
 const (
@@ -30,10 +30,10 @@ const (
 
 // Errors
 var (
-	ErrMissingGitConfig 	= errors.New("no git credentials supplied")
-	ErrMissingGitURL     	= errors.New("missing git url")
-	ErrMissingSSHKeyFile 	= errors.New("missing sshkey file")
-	ErrInvalidSSHKey		= errors.New("sshkey invalid")
+	ErrMissingGitConfig  = errors.New("no git credentials supplied")
+	ErrMissingGitURL     = errors.New("missing git url")
+	ErrMissingSSHKeyFile = errors.New("missing sshkey file")
+	ErrInvalidSSHKey     = errors.New("sshkey invalid")
 )
 
 var aferoFs = afero.Afero{
@@ -50,7 +50,7 @@ func init() {
 func SetupLogging(logDir string) *logrus.Logger {
 	// TODO: Syslog instead?
 	pathMap := lfshook.PathMap{
-		logrus.InfoLevel: filepath.Join(logDir, "info.log"),
+		logrus.InfoLevel:  filepath.Join(logDir, "info.log"),
 		logrus.ErrorLevel: filepath.Join(logDir, "error.log"),
 	}
 	log.Hooks.Add(lfshook.NewHook(
@@ -85,12 +85,12 @@ func (s SyncConfig) Validate() error {
 	if s.Path == "" {
 		s.Path = DotSyncPath
 	}
-	
+
 	return nil
 }
 
-func getConfigPaths() ([]string) {
-	// TODO: Make the config paths more verbose 
+func getConfigPaths() []string {
+	// TODO: Make the config paths more verbose
 	configPaths := []string{DotSyncPath}
 	homePath, err := os.UserHomeDir()
 	if err != nil {
@@ -103,7 +103,7 @@ func getConfigPaths() ([]string) {
 
 func OpenSyncConfig() (SyncConfig, error) {
 	config := SyncConfig{}
-	configPaths := getConfigPaths() 
+	configPaths := getConfigPaths()
 	for _, configPath := range configPaths {
 		bytes, err := aferoFs.ReadFile(configPath)
 		if err != nil {
@@ -135,7 +135,10 @@ func SyncOrigin() {
 	}
 	// This feels weird and clunky, think of something better
 	SetupLogging(syncConfig.Path)
-	resync := syncConfig.IndexFiles()
+	index := InitialiseIndex(syncConfig.Path, syncConfig.Files)
+	index.ParseIndexFile(syncConfig.Path)
+	filesToSync, err := index.CopyAndCleanup(syncConfig.Path)
+	// TODO: Git operations
 	if err != nil {
 		log.Error("File indexing ran into an issue", err)
 	}

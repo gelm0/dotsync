@@ -36,6 +36,8 @@ else
 // Path of original file
 // Original filemode
 // Any errors while trying to index it
+// TODO: Remove this failed construct and replace it with a channel
+// that signal the state of all failed files
 type FileInfo struct {
 	Path string
 	Perm os.FileMode
@@ -184,7 +186,7 @@ func cleanupOldFiles(configPath string, files map[string]FileInfo) error {
 	return nil
 }
 
-func (index *Indexes) CopyAndCleanup(configPath string) {
+func (index *Indexes) CopyAndCleanup(configPath string) (map[string]FileInfo, error) {
 	// Current all the files we want to keep
 	// Old all the files that we want to get rid of
 	// Diff these and create a list over what we need to copy
@@ -202,16 +204,17 @@ func (index *Indexes) CopyAndCleanup(configPath string) {
 	cleanup := index.Current
 	err := cleanupOldFiles(configPath, cleanup)
 	if err != nil {
-		log.Error(err)
+		return nil, err
 	}
 	err = copyFiles(configPath, copy)
 	if err != nil {
-		log.Error(err)
+		return nil, err
 	}
 	err = writeIndexFile(configPath, newIndex)
 	if err != nil {
-		log.Error(err)
+		return nil, err
 	}
+	return newIndex, nil
 }
 
 func DiffFiles(file1 afero.File, file2 afero.File) (bool, error) {
