@@ -41,8 +41,6 @@ else
 type FileInfo struct {
 	Path string
 	Perm os.FileMode
-	// If file was failed to index
-	Failed bool
 }
 
 // Contains needed fileinfo for new files inexes as well
@@ -65,13 +63,11 @@ func InitialiseIndex(dotsyncPath string, files []string) (index *Indexes) {
 		New:     make(map[string]FileInfo),
 	}
 	for _, filePath := range files {
-		failed := false
 		if filePath == "" {
 			continue
 		}
 		file, err := aferoFs.Open(filePath)
 		if err != nil {
-			failed = true
 			log.WithField("file", filePath).
 				Error("Failed to open file", err)
 			continue
@@ -79,14 +75,12 @@ func InitialiseIndex(dotsyncPath string, files []string) (index *Indexes) {
 		defer file.Close()
 		fileInfo, err := file.Stat()
 		if err != nil {
-			failed = true
 			log.WithField("file", filePath).
 				Error("Failed to stat", err)
 			continue
 		}
 		hash, err := sha1FileHash(file)
 		if err != nil {
-			failed = true
 			log.WithField("file", filePath).
 				Error("Failed to create hash", err)
 			continue
@@ -95,7 +89,6 @@ func InitialiseIndex(dotsyncPath string, files []string) (index *Indexes) {
 		index.New[hash] = FileInfo{
 			Path:   filePath,
 			Perm:   fileInfo.Mode(),
-			Failed: failed,
 		}
 
 	}
@@ -104,7 +97,7 @@ func InitialiseIndex(dotsyncPath string, files []string) (index *Indexes) {
 }
 
 func (index *Indexes) ParseIndexFile(configPath string) {
-	file, err := aferoFs.Open(filepath.Join(configPath, IndexFileName))
+	file, err := aferoFs.OpenFile(filepath.Join(configPath, IndexFileName), os.O_RDONLY | os.O_CREATE, 0666)
 	if err != nil {
 		log.Debug("Failed to open index file. Creating new")
 	}
@@ -121,14 +114,12 @@ func (index *Indexes) ParseIndexFile(configPath string) {
 			index.Current[hash] = FileInfo{
 				Path:   path,
 				Perm:   os.FileMode(fileMode),
-				Failed: false,
 			}
 		} else {
 			if hash != "" {
 				index.Current[hash] = FileInfo{
 					Path:   path,
 					Perm:   os.FileMode(fileMode),
-					Failed: true,
 				}
 			}
 			log.WithFields(logrus.Fields{

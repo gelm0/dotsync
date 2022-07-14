@@ -1,9 +1,12 @@
 package dotsync
 
 import (
+	"math/rand"
 	"os"
 	"testing"
 
+	"crypt/rand"
+	"path/filepath"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 )
@@ -20,6 +23,11 @@ const (
 	nonExistingFile   = rootFolder + "test/data/dont_exist"
 )
 
+const (
+	otherPath = "/tmp/other"
+	dotsyncPath = "/tmp/dotsync"
+)
+
 func openFiles(fileNames ...string) []afero.File {
 	files := []afero.File{}
 	for _, path := range fileNames {
@@ -32,52 +40,31 @@ func openFiles(fileNames ...string) []afero.File {
 	return files
 }
 
-func initaliseMemMap() {
+func fillFileWithData(filePath string) {
+	f, err := aferoFs.OpenFile(filePath, os.O_CREATE | os.O_RDWR, 0666)
+	if err != nil {
+		panic(err)
+	}
+	data := make([]byte, 1024)
+	_, err = rand.Read(data) 
+	if err != nil {
+		panic(err)
+	}
+	_, err = f.Write(data)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func initalise() {
 	aferoFs.Fs = afero.NewMemMapFs()
-	aferoFs.MkdirAll("/tmp/dotsync", os.ModePerm)
-	aferoFs.MkdirAll("/tmp/other", os.ModePerm)
+	aferoFs.MkdirAll(otherPath, os.ModePerm)
+	aferoFs.MkdirAll(dotsyncPath, os.ModePerm)
+	syncFiles := []string{"1", "2", "3"}
+	otherFiles := []string{"4","5", "6"}
+	for i, _ := range syncFiles {
+		fillFileWithData(filepath.Join(dotsyncPath, syncFiles[i]))
+		fillFileWithData(filepath.Join(otherPath, otherFiles[i]))
+	}
 }
 
-func TestDiffFilesIdentical(t *testing.T) {
-	files := openFiles(vimrc, vimrcIdentical)
-	response, err := DiffFiles(files[0], files[1])
-	assert.Equal(t, err, nil)
-	assert.Equal(t, response, false)
-}
-
-func TestDiffFilesEmptyFilesIdentical(t *testing.T) {
-	files := openFiles(emptyFile, emptyFile)
-	response, err := DiffFiles(files[0], files[1])
-	assert.Equal(t, err, nil)
-	assert.Equal(t, response, false)
-}
-
-func TestDiffFilesSameSizeDifference(t *testing.T) {
-	files := openFiles(vimrc, vimrcSameSizeDiff)
-	response, err := DiffFiles(files[0], files[1])
-	assert.Equal(t, err, nil)
-	assert.Equal(t, response, true)
-}
-
-func TestDiffFilesNewlineIntroduced(t *testing.T) {
-	files := openFiles(vimrc, vimrcDiff1)
-	response, err := DiffFiles(files[0], files[1])
-	assert.Equal(t, err, nil)
-	assert.Equal(t, response, true)
-}
-func TestDiffFilesChangesIntroduced(t *testing.T) {
-	files := openFiles(vimrc, vimrcDiff2)
-	response, err := DiffFiles(files[0], files[1])
-	assert.Equal(t, err, nil)
-	assert.Equal(t, response, true)
-}
-
-func TestIndexFiles(t *testing.T) {
-	assert.Equal(t, true, true)
-}
-//func TestDiffFilesFileNotExist(t *testing.T) {
-//	files := openFiles(vimrc, nonExistingFile)
-//	response, err := DiffFiles(files[0], files[1])
-//	assert.Error(t, err)
-//	assert.Equal(t, response, true)
-//}
