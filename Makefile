@@ -1,12 +1,15 @@
-.PHONY: all install mod clean vet test
+.PHONY: all install build mod clean vet test
 
 # Target all gofiles
 TARGETS = ./...
 
-all: mod clean vet test install
+all: mod clean vet test build
 
 install:
 	go install $(TARGETS)
+
+build:
+	go build $(TARGETS)
 
 mod:
 	go mod tidy

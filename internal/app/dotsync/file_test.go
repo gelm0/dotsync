@@ -1,30 +1,18 @@
 package dotsync
 
 import (
-	"math/rand"
 	"os"
 	"testing"
 
-	"crypt/rand"
+	"crypto/rand"
 	"path/filepath"
+
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 )
 
-/* TODO: Make this generated data */
-const rootFolder = "../../../"
 const (
-	vimrc             = rootFolder + "test/data/vimrc"
-	vimrcDiff1        = rootFolder + "test/data/vimrc_newline"
-	vimrcDiff2        = rootFolder + "test/data/vimrc_new_options"
-	vimrcSameSizeDiff = rootFolder + "test/data/vimrc_diff_size"
-	vimrcIdentical    = rootFolder + "test/data/vimrc_identical"
-	emptyFile         = rootFolder + "test/data/emptyfile"
-	nonExistingFile   = rootFolder + "test/data/dont_exist"
-)
-
-const (
-	otherPath = "/tmp/other"
+	otherPath   = "/tmp/other"
 	dotsyncPath = "/tmp/dotsync"
 )
 
@@ -41,12 +29,12 @@ func openFiles(fileNames ...string) []afero.File {
 }
 
 func fillFileWithData(filePath string) {
-	f, err := aferoFs.OpenFile(filePath, os.O_CREATE | os.O_RDWR, 0666)
+	f, err := aferoFs.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
 		panic(err)
 	}
 	data := make([]byte, 1024)
-	_, err = rand.Read(data) 
+	_, err = rand.Read(data)
 	if err != nil {
 		panic(err)
 	}
@@ -56,15 +44,46 @@ func fillFileWithData(filePath string) {
 	}
 }
 
-func initalise() {
+func initalise() ([]string, []string) {
 	aferoFs.Fs = afero.NewMemMapFs()
 	aferoFs.MkdirAll(otherPath, os.ModePerm)
 	aferoFs.MkdirAll(dotsyncPath, os.ModePerm)
-	syncFiles := []string{"1", "2", "3"}
-	otherFiles := []string{"4","5", "6"}
-	for i, _ := range syncFiles {
-		fillFileWithData(filepath.Join(dotsyncPath, syncFiles[i]))
-		fillFileWithData(filepath.Join(otherPath, otherFiles[i]))
+	currentFiles := []string{"1", "2", "3"}
+	newFiles := []string{"4", "5", "6"}
+	for i, _ := range currentFiles {
+		fullSyncPath := filepath.Join(dotsyncPath, currentFiles[i])
+		fullOtherPath := filepath.Join(otherPath, newFiles[i])
+		fillFileWithData(fullSyncPath)
+		fillFileWithData(fullOtherPath)
+		currentFiles[i] = fullSyncPath
+		newFiles[i] = fullOtherPath
+	}
+	return currentFiles, newFiles
+}
+
+func TestInitialiseIndex(t *testing.T) {
+	_, newFiles := initalise()
+	index := InitialiseIndex(newFiles)
+	assert.Equal(t, len(index.New), 3)
+	i := 0
+	for _, v := range index.New {
+		assert.Equal(t, v.Path, newFiles[i])
+		assert.Equal(t, v.Perm, os.FileMode(0666))
+		i += 1
 	}
 }
 
+func TestParseNonExistingIndexFile(t *testing.T) {
+	_, newFiles := initalise()
+	index := InitialiseIndex(newFiles)
+	index.ParseIndexFile(dotsyncPath)
+	ok, err := aferoFs.Exists(filepath.Join(dotsyncPath, IndexFileName))
+	if err != nil {
+		panic(err)
+	}
+	assert.Equal(t, ok, true)
+}
+
+func TestParseIndexFile(t *testing.T) {
+
+}

@@ -135,9 +135,9 @@ func SyncOrigin() {
 	}
 	// This feels weird and clunky, think of something better
 	SetupLogging(syncConfig.Path)
-	index := InitialiseIndex(syncConfig.Path, syncConfig.Files)
+	index := InitialiseIndex(syncConfig.Files)
 	index.ParseIndexFile(syncConfig.Path)
-	filesToSync, err := index.CopyAndCleanup(syncConfig.Path)
+	_, err = index.CopyAndCleanup(syncConfig.Path)
 	// TODO: Git operations
 	if err != nil {
 		log.Error("File indexing ran into an issue", err)

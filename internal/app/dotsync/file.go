@@ -57,7 +57,7 @@ const (
 
 // Returns an Indexes struct with the current index of tracked files
 // as well as the previous tracked parsed from the index file
-func InitialiseIndex(dotsyncPath string, files []string) (index *Indexes) {
+func InitialiseIndex(files []string) (index *Indexes) {
 	index = &Indexes{
 		Current: make(map[string]FileInfo),
 		New:     make(map[string]FileInfo),
@@ -87,17 +87,16 @@ func InitialiseIndex(dotsyncPath string, files []string) (index *Indexes) {
 		}
 
 		index.New[hash] = FileInfo{
-			Path:   filePath,
-			Perm:   fileInfo.Mode(),
+			Path: filePath,
+			Perm: fileInfo.Mode(),
 		}
 
 	}
-	index.ParseIndexFile(dotsyncPath)
 	return
 }
 
 func (index *Indexes) ParseIndexFile(configPath string) {
-	file, err := aferoFs.OpenFile(filepath.Join(configPath, IndexFileName), os.O_RDONLY | os.O_CREATE, 0666)
+	file, err := aferoFs.OpenFile(filepath.Join(configPath, IndexFileName), os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
 		log.Debug("Failed to open index file. Creating new")
 	}
@@ -112,14 +111,14 @@ func (index *Indexes) ParseIndexFile(configPath string) {
 		// TODO: Nil check values
 		if n == 3 {
 			index.Current[hash] = FileInfo{
-				Path:   path,
-				Perm:   os.FileMode(fileMode),
+				Path: path,
+				Perm: os.FileMode(fileMode),
 			}
 		} else {
 			if hash != "" {
 				index.Current[hash] = FileInfo{
-					Path:   path,
-					Perm:   os.FileMode(fileMode),
+					Path: path,
+					Perm: os.FileMode(fileMode),
 				}
 			}
 			log.WithFields(logrus.Fields{
