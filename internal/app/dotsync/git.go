@@ -221,7 +221,7 @@ func (r *Repository) TryAndUpdate() error {
 	}
 
 	if localRef != remoteRef {
-		return errors.New("")
+		return errors.New("Failed to update")
 	}
 
 	return nil
