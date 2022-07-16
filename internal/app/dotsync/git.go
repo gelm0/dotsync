@@ -10,13 +10,13 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
-	"github.com/spf13/afero"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/afero"
 )
 
 type Repository struct {
-	Repo *git.Repository
-	Auth *ssh.PublicKeys
+	Repo   *git.Repository
+	Auth   *ssh.PublicKeys
 	Remote string
 	Branch string
 }
@@ -89,12 +89,12 @@ func newRepository(s SyncConfig, g PlainGitOperations) (*Repository, error) {
 
 // Clones a repository using ssh url formatting and a valid sshKey read as byte slice
 // Returns error if unable to clone the specified repository url
-func cloneSSH(remoteURL, branch string, auth *ssh.PublicKeys , g PlainGitOperations) (*git.Repository, error) {
+func cloneSSH(remoteURL, branch string, auth *ssh.PublicKeys, g PlainGitOperations) (*git.Repository, error) {
 	r, err := g.plainClone(DotSyncPath, false, &git.CloneOptions{
-		URL:        	remoteURL,
-		Progress:  		os.Stdout,
-		ReferenceName: 	plumbing.NewBranchReferenceName(branch),
-		Auth:       	auth,
+		URL:           remoteURL,
+		Progress:      os.Stdout,
+		ReferenceName: plumbing.NewBranchReferenceName(branch),
+		Auth:          auth,
 	})
 	if err != nil {
 		return nil, err
@@ -124,7 +124,7 @@ func (r *Repository) Commit(commitMessage string) error {
 func (r *Repository) Fetch() error {
 	err := r.Repo.Fetch(&git.FetchOptions{
 		RemoteName: r.Remote,
-		Auth: r.Auth,
+		Auth:       r.Auth,
 	})
 
 	if err == git.NoErrAlreadyUpToDate {
@@ -141,7 +141,7 @@ func (r *Repository) Pull() error {
 	}
 	err = w.Pull(&git.PullOptions{
 		RemoteName: r.Remote,
-		Auth: r.Auth,
+		Auth:       r.Auth,
 	})
 
 	if err == git.NoErrAlreadyUpToDate {
@@ -179,24 +179,49 @@ func (r *Repository) Add(filePaths []string) error {
 // Tries and update the repository with a git pull. Tries and reset the repository to the the HEAD of origin
 // returns an error if that fails
 func (r *Repository) TryAndUpdate() error {
-	err := r.Fetch(remoteName)
-	if err != nil {
-		log.WithField("remoteName", remoteName).Error(err)
-		return err
+	err := r.Pull()
+	if err == nil {
+		return nil
 	}
+	// Repo can't be updated, reset and retry
 
-	remoteRef, err := r.Repo.Reference(plumbing.ReferenceName("refs/remotes/"+ remoteName +"/"+r.Branch), true)
+	remoteRef, err := r.Repo.Reference(
+		plumbing.NewRemoteReferenceName(r.Remote, r.Branch), true)
 	if err != nil {
 		log.WithFields(logrus.Fields{
 			"Remote": r.Remote,
 			"Branch": r.Branch,
-		}).Error(err)
+		}).Error("Failed to fetch remote reference", err)
 		return err
 	}
-	localRef, err := repo.Reference(plumbing.ReferenceName("HEAD"), true)
+
+	w, err := r.Repo.Worktree()
 	if err != nil {
-		rlog.Errorf("Failed to get local reference for HEAD: %v", err)
-		return
+		log.Error("Failed to get worktree when trying to reset the repository")
+		return err
+	}
+
+	err = w.Reset(&git.ResetOptions{
+		Mode:   git.HardReset,
+		Commit: remoteRef.Hash(),
+	})
+
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"Mode":   "Hard",
+			"Commit": remoteRef.Hash(),
+		}).Error("Failed to reset worktree")
+		return err
+	}
+	// Confirm changes
+	localRef, err := r.Repo.Reference(plumbing.HEAD, true)
+	if err != nil {
+		log.Error("Failed to fetch local reference", err)
+		return err
+	}
+
+	if localRef != remoteRef {
+		return errors.New("")
 	}
 
 	return nil
