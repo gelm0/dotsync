@@ -7,13 +7,18 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 	"github.com/spf13/afero"
+	"github.com/sirupsen/logrus"
 )
 
 type Repository struct {
 	Repo *git.Repository
+	Auth *ssh.PublicKeys
+	Remote string
+	Branch string
 }
 
 type GitOperations interface {
@@ -59,8 +64,13 @@ func newRepository(s SyncConfig, g PlainGitOperations) (*Repository, error) {
 	var repo = &git.Repository{}
 	var r = &Repository{}
 	branch := s.GitConfig.Branch
+
+	auth, err := ssh.NewPublicKeys("git", []byte(authObject), "")
+	if err != nil {
+		return nil, err
+	}
 	if _, err := fs.Stat(filepath.Join(DotSyncPath, ".git")); errors.Is(err, os.ErrNotExist) {
-		repo, err = cloneSSH(remoteURL, branch, []byte(authObject), g)
+		repo, err = cloneSSH(remoteURL, branch, auth, g)
 		if err != nil {
 			return nil, err
 		}
@@ -71,21 +81,20 @@ func newRepository(s SyncConfig, g PlainGitOperations) (*Repository, error) {
 		}
 	}
 	r.Repo = repo
+	r.Auth = auth
+	r.Branch = s.GitConfig.Branch
+	r.Remote = s.GitConfig.Remote
 	return r, nil
 }
 
 // Clones a repository using ssh url formatting and a valid sshKey read as byte slice
 // Returns error if unable to clone the specified repository url
-func cloneSSH(remoteURL, branch string, sshKey []byte, g PlainGitOperations) (*git.Repository, error) {
-	publicKey, err := ssh.NewPublicKeys("git", sshKey, "")
-	if err != nil {
-		return nil, err
-	}
+func cloneSSH(remoteURL, branch string, auth *ssh.PublicKeys , g PlainGitOperations) (*git.Repository, error) {
 	r, err := g.plainClone(DotSyncPath, false, &git.CloneOptions{
-		URL:        remoteURL,
-		Progress:   os.Stdout,
-		RemoteName: branch,
-		Auth:       publicKey,
+		URL:        	remoteURL,
+		Progress:  		os.Stdout,
+		ReferenceName: 	plumbing.NewBranchReferenceName(branch),
+		Auth:       	auth,
 	})
 	if err != nil {
 		return nil, err
@@ -112,40 +121,43 @@ func (r *Repository) Commit(commitMessage string) error {
 	return err
 }
 
-func (r *Repository) Pull(remoteName string) error {
-	if remoteName == "" {
-		return errors.New("no remotename supplied")
+func (r *Repository) Fetch() error {
+	err := r.Repo.Fetch(&git.FetchOptions{
+		RemoteName: r.Remote,
+		Auth: r.Auth,
+	})
+
+	if err == git.NoErrAlreadyUpToDate {
+		return nil
 	}
+
+	return err
+}
+
+func (r *Repository) Pull() error {
 	w, err := r.Repo.Worktree()
 	if err != nil {
 		return err
 	}
-	err = w.Pull(&git.PullOptions{})
-	if err != nil {
-		return err
+	err = w.Pull(&git.PullOptions{
+		RemoteName: r.Remote,
+		Auth: r.Auth,
+	})
+
+	if err == git.NoErrAlreadyUpToDate {
+		return nil
 	}
-	return nil
+
+	return err
 }
 
 // Pushes current commited files to remote. Assumes HTTPs or SSH depending on auth method
 // that is supplied to the function
-func (r *Repository) Push(remoteName, basicAuth string, sshKey []byte) error {
-	// No basic auth found, trying sshAuth
-	if sshKey == nil {
-		return ErrInvalidSSHKey
-	}
-	publicKey, err := ssh.NewPublicKeys("git", sshKey, "")
-	if err != nil {
-		return err
-	}
-	err = r.Repo.Push(&git.PushOptions{
-		RemoteName: remoteName,
-		Auth:       publicKey,
+func (r *Repository) Push() error {
+	return r.Repo.Push(&git.PushOptions{
+		RemoteName: r.Remote,
+		Auth:       r.Auth,
 	})
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func (r *Repository) Add(filePaths []string) error {
@@ -161,5 +173,31 @@ func (r *Repository) Add(filePaths []string) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// Tries and update the repository with a git pull. Tries and reset the repository to the the HEAD of origin
+// returns an error if that fails
+func (r *Repository) TryAndUpdate() error {
+	err := r.Fetch(remoteName)
+	if err != nil {
+		log.WithField("remoteName", remoteName).Error(err)
+		return err
+	}
+
+	remoteRef, err := r.Repo.Reference(plumbing.ReferenceName("refs/remotes/"+ remoteName +"/"+r.Branch), true)
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"Remote": r.Remote,
+			"Branch": r.Branch,
+		}).Error(err)
+		return err
+	}
+	localRef, err := repo.Reference(plumbing.ReferenceName("HEAD"), true)
+	if err != nil {
+		rlog.Errorf("Failed to get local reference for HEAD: %v", err)
+		return
+	}
+
 	return nil
 }

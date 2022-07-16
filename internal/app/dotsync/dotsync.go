@@ -16,6 +16,7 @@ type GitConfig struct {
 	URL     string `yaml:"url"`
 	KeyFile string `yaml:"sshKey"`
 	Branch  string `yaml:"branch,omitempty"`
+	Remote 	string `yaml:"branch,omitempty`
 }
 
 type SyncConfig struct {
@@ -64,14 +65,22 @@ func SetupLogging(logDir string) *logrus.Logger {
 // 2. Files are synced from git to local
 
 // Just nonempty validation for now
-func (s SyncConfig) Validate() error {
+func (s *SyncConfig) Validate() error {
 	if s.GitConfig == (GitConfig{}) {
 		return ErrMissingGitConfig
 	}
 
-	config := s.GitConfig
+	config := &s.GitConfig
 	if config.URL == "" {
 		return ErrMissingGitURL
+	}
+
+	if config.Branch == "" {
+		config.Branch = "main"
+	}
+
+	if config.Remote == "" {
+		config.Remote = "origin"
 	}
 
 	if config.KeyFile == "" {
@@ -137,10 +146,20 @@ func SyncOrigin() {
 	SetupLogging(syncConfig.Path)
 	index := InitialiseIndex(syncConfig.Files)
 	index.ParseIndexFile(syncConfig.Path)
-	_, err = index.CopyAndCleanup(syncConfig.Path)
+	newIndex, err := index.CopyAndCleanup(syncConfig.Path)
 	// TODO: Git operations
 	if err != nil {
 		log.Error("File indexing ran into an issue", err)
+	}
+
+	repository, err := NewRepository(syncConfig)
+	if err != nil {
+		log.Error("Failed to open repository", err)
+	}
+	for k, v := range newIndex {
+		fileToSync := filepath.Join(syncConfig.Path, k)
+		repository.Repo
+
 	}
 }
 
@@ -150,6 +169,4 @@ func SyncOrigin() {
 // folder such as /home/<username> or each file can be moved out to a specified
 // path. If path is omitted from file, the files are kept in folder specified by user
 // or if omitted in the default path /tmp/dotsync
-func SyncLocal() {
-
-}
+func SyncLocal() {}
