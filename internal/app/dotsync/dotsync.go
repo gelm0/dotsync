@@ -26,7 +26,7 @@ type SyncConfig struct {
 }
 
 const (
-	DotSyncPath = "/tmp/dotsync"
+	DotSyncPath = ".dotsync"
 )
 
 // Errors
@@ -98,34 +98,29 @@ func (s *SyncConfig) Validate() error {
 	return nil
 }
 
-func getConfigPaths() []string {
-	// TODO: Make the config paths more verbose
-	configPaths := []string{DotSyncPath}
+func getConfigPath() string {
 	homePath, err := os.UserHomeDir()
 	if err != nil {
 		log.Error("Failed to get user home", err)
-		return configPaths
+		return ""
 	}
-	configPaths = append(configPaths, homePath)
-	return configPaths
+	return filepath.Join(homePath, DotSyncPath, "config")
 }
 
 func OpenSyncConfig() (SyncConfig, error) {
 	config := SyncConfig{}
-	configPaths := getConfigPaths()
-	for _, configPath := range configPaths {
-		bytes, err := aferoFs.ReadFile(configPath)
-		if err != nil {
-			log.WithField("path", configPath).Error("Failed to open config file", err)
-			continue
-		}
-		err = yaml.Unmarshal(bytes, &config)
-		if err != nil {
-			return config, err
-		}
-		if err = config.Validate(); err != nil {
-			return config, err
-		}
+	configPath := getConfigPath()
+	bytes, err := aferoFs.ReadFile(configPath)
+	if err != nil {
+		log.WithField("path", configPath).Error("Failed to open config file", err)
+		return config, err
+	}
+	err = yaml.Unmarshal(bytes, &config)
+	if err != nil {
+		return config, err
+	}
+	if err = config.Validate(); err != nil {
+		return config, err
 	}
 	return config, nil
 }
