@@ -14,21 +14,21 @@ import (
 	"github.com/spf13/afero"
 )
 
-type Repository struct {
+type repository struct {
 	Repo   *git.Repository
 	Auth   *ssh.PublicKeys
 	Remote string
 	Branch string
 }
 
-type GitOperations interface {
+type gitOperations interface {
 	Commit(commitMessage string) error
 	Pull(remoteName string) error
 	Push(remoteName, basicAuth string, sshKey []byte) error
 	Add(filePaths []string) error
 }
 
-type PlainGitOperations interface {
+type plainGitOperations interface {
 	plainClone(path string, isBare bool, o *git.CloneOptions) (*git.Repository, error)
 	plainOpen(path string) (*git.Repository, error)
 }
@@ -46,11 +46,11 @@ func (g *gitExtension) plainOpen(path string) (*git.Repository, error) {
 // Creates and returns a Repository. If nothing exist
 // a clone operation will be performed
 // Returns the repository and a nil error if sucessful
-func NewRepository(s SyncConfig) (*Repository, error) {
+func NewRepository(s SyncConfig) (*repository, error) {
 	return newRepository(s, nil)
 }
 
-func newRepository(s SyncConfig, g PlainGitOperations) (*Repository, error) {
+func newRepository(s SyncConfig, g plainGitOperations) (*repository, error) {
 	if g == nil {
 		g = &gitExtension{}
 	}
@@ -62,7 +62,7 @@ func newRepository(s SyncConfig, g PlainGitOperations) (*Repository, error) {
 		return nil, err
 	}
 	var repo = &git.Repository{}
-	var r = &Repository{}
+	var r = &repository{}
 	branch := s.GitConfig.Branch
 
 	auth, err := ssh.NewPublicKeys("git", []byte(authObject), "")
@@ -89,7 +89,7 @@ func newRepository(s SyncConfig, g PlainGitOperations) (*Repository, error) {
 
 // Clones a repository using ssh url formatting and a valid sshKey read as byte slice
 // Returns error if unable to clone the specified repository url
-func cloneSSH(remoteURL, branch string, auth *ssh.PublicKeys, g PlainGitOperations) (*git.Repository, error) {
+func cloneSSH(remoteURL, branch string, auth *ssh.PublicKeys, g plainGitOperations) (*git.Repository, error) {
 	r, err := g.plainClone(DotSyncPath, false, &git.CloneOptions{
 		URL:           remoteURL,
 		Progress:      os.Stdout,
@@ -102,7 +102,7 @@ func cloneSSH(remoteURL, branch string, auth *ssh.PublicKeys, g PlainGitOperatio
 	return r, nil
 }
 
-func (r *Repository) Commit(commitMessage string) error {
+func (r *repository) commit(commitMessage string) error {
 	worktree, err := r.Repo.Worktree()
 	if err != nil {
 		return err
@@ -121,7 +121,7 @@ func (r *Repository) Commit(commitMessage string) error {
 	return err
 }
 
-func (r *Repository) Fetch() error {
+func (r *repository) fetch() error {
 	err := r.Repo.Fetch(&git.FetchOptions{
 		RemoteName: r.Remote,
 		Auth:       r.Auth,
@@ -134,7 +134,7 @@ func (r *Repository) Fetch() error {
 	return err
 }
 
-func (r *Repository) Pull() error {
+func (r *repository) pull() error {
 	w, err := r.Repo.Worktree()
 	if err != nil {
 		return err
@@ -153,23 +153,45 @@ func (r *Repository) Pull() error {
 
 // Pushes current commited files to remote. Assumes HTTPs or SSH depending on auth method
 // that is supplied to the function
-func (r *Repository) Push() error {
+func (r *repository) push() error {
 	return r.Repo.Push(&git.PushOptions{
 		RemoteName: r.Remote,
 		Auth:       r.Auth,
 	})
 }
 
-func (r *Repository) Add(filePaths []string) error {
+func (r *repository) addFile(filePath string) error {
 	workTree, err := r.Repo.Worktree()
 	if err != nil {
 		return err
 	}
+	_, err = workTree.Add(filePath)
+	if err != nil {
+		// Bit naive implementation we should do something better
+		// with error handling here
+		return err
+	}
+	return nil
+}
+
+func (r *repository) removeFile(filePath string) error {
+	workTree, err := r.Repo.Worktree()
+	if err != nil {
+		return err
+	}
+	_, err = workTree.Remove(filePath)
+	if err != nil {
+		// Bit naive implementation we should do something better
+		// with error handling here
+		return err
+	}
+	return nil
+}
+
+func (r *repository) add(filePaths []string) error {
 	for _, file := range filePaths {
-		_, err := workTree.Add(file)
+		err := r.addFile(file)
 		if err != nil {
-			// Bit naive implementation we should do something better
-			// with error handling here
 			return err
 		}
 	}
@@ -178,8 +200,8 @@ func (r *Repository) Add(filePaths []string) error {
 
 // Tries and update the repository with a git pull. Tries and reset the repository to the the HEAD of origin
 // returns an error if that fails
-func (r *Repository) TryAndUpdate() error {
-	err := r.Pull()
+func (r *repository) tryAndUpdate() error {
+	err := r.pull()
 	if err == nil {
 		return nil
 	}

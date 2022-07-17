@@ -16,7 +16,7 @@ type GitConfig struct {
 	URL     string `yaml:"url"`
 	KeyFile string `yaml:"sshKey"`
 	Branch  string `yaml:"branch,omitempty"`
-	Remote 	string `yaml:"branch,omitempty`
+	Remote  string `yaml:"remote,omitempty`
 }
 
 type SyncConfig struct {
@@ -156,10 +156,30 @@ func SyncOrigin() {
 	if err != nil {
 		log.Error("Failed to open repository", err)
 	}
-	for k, v := range newIndex {
-		fileToSync := filepath.Join(syncConfig.Path, k)
-		repository.Repo
 
+	err = repository.tryAndUpdate()
+	if err != nil {
+		log.Info("Failed to update repository")
+		os.Exit(1)
+	}
+	// cleanup old files
+	for k := range index.Current {
+		fileToSync := filepath.Join(syncConfig.Path, k)
+		repository.removeFile(fileToSync)
+	}
+	// Add new files
+	for k := range newIndex {
+		fileToSync := filepath.Join(syncConfig.Path, k)
+		repository.addFile(fileToSync)
+	}
+	if (len(index.Current) > 0 || len(newIndex) > 0) {
+		commitMessage := fmt.Sprintf("synced %d, removed %d files", len(newIndex), len(index.Current))
+		repository.commit(commitMessage)
+		repository.push()
+		log.Info(commitMessage)
+	} else {
+		// To spammy?
+		log.Info("No changes")
 	}
 }
 
