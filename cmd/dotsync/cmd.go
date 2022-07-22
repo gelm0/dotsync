@@ -2,11 +2,14 @@ package main
 
 import (
 	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/gelm0/dotsync/internal/app/dotsync"
 	"golang.org/x/term"
+
 	//"github.com/muesli/termenv"
-	"os"
+	//"os"
 )
 
 type model struct {
@@ -120,9 +123,10 @@ func (m model) View() string {
 }
 
 func main() {
-	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
-	if err := p.Start(); err != nil {
-		fmt.Printf("Alas, there's been an error: %v", err)
-		os.Exit(1)
-	}
+	// p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+	// if err := p.Start(); err != nil {
+	// 	fmt.Printf("Alas, there's been an error: %v", err)
+	// 	os.Exit(1)
+	// }
+	dotsync.SyncOrigin()
 }

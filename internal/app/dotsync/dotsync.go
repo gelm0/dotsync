@@ -31,6 +31,7 @@ const (
 
 // Errors
 var (
+	ErrMissingConfig     = errors.New("missing config")
 	ErrMissingGitConfig  = errors.New("no git credentials supplied")
 	ErrMissingGitURL     = errors.New("missing git url")
 	ErrMissingSSHKeyFile = errors.New("missing sshkey file")
@@ -107,13 +108,24 @@ func getConfigPath() string {
 	return filepath.Join(homePath, DotSyncPath, "config")
 }
 
+// Utility function if config does not exists
+// creates dotsync directory in user home and an empty config
+func createConfig(configPath string) {
+}
+
 func OpenSyncConfig() (SyncConfig, error) {
 	config := SyncConfig{}
 	configPath := getConfigPath()
+	if configPath == "" {
+		return config, ErrMissingConfig
+	}
 	bytes, err := aferoFs.ReadFile(configPath)
-	if err != nil {
-		log.WithField("path", configPath).Error("Failed to open config file", err)
-		return config, err
+	if err != nil  {
+		if errors.Is(err, os.ErrNotExist) {
+			createConfig(configPath)	
+		} else {
+			return config, err
+		}
 	}
 	err = yaml.Unmarshal(bytes, &config)
 	if err != nil {
@@ -129,7 +141,7 @@ func OpenSyncConfig() (SyncConfig, error) {
 func SyncOrigin() {
 	syncConfig, err := OpenSyncConfig()
 	if err != nil {
-		log.Panic("Failed to open config", err)
+		log.WithField("path", getConfigPath()).Panic("Failed to open config file. Error: ", err)
 		os.Exit(1)
 	}
 	err = syncConfig.Validate()
